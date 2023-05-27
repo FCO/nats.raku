@@ -1,0 +1,6 @@
+use Test;
+use Nats;
+
+pass "replace me";
+
+done-testing;

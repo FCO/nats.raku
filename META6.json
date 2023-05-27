@@ -1,0 +1,25 @@
+{
+  "auth": "zef:FCO",
+  "authors": [
+    "Fernando Corrêa de Oliveira"
+  ],
+  "build-depends": [
+  ],
+  "depends": [
+  ],
+  "description": "blah blah blah",
+  "license": "Artistic-2.0",
+  "name": "Nats",
+  "perl": "6.d",
+  "provides": {
+    "Nats": "lib/Nats.rakumod"
+  },
+  "resources": [
+  ],
+  "source-url": "",
+  "tags": [
+  ],
+  "test-depends": [
+  ],
+  "version": "0.0.1"
+}
