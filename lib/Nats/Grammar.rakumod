@@ -2,7 +2,7 @@
 unit grammar Nats::Grammar;
 
 token subject {
-    <[a..zA..Z_]><[\w.]>*
+    [ \w+ ]+ %% '.'
 }
 token TOP {
     <msg-option>+ %% \n
@@ -28,7 +28,7 @@ token msg-option:sym<MSG>  {
     <sid>     \s+
     [
         <reply-to=.subject> \s+
-    ]?
+    ]??
     <size>    \n
     {}
     <payload(+$<size>)>
