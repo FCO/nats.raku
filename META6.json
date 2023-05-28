@@ -7,15 +7,25 @@
     "Test::Mock"
   ],
   "depends": [
-    "URL",
-    "JSON::Fast"
+    "JSON::Fast",
+    "Nats::Grammar",
+    "Nats::Replyable",
+    "URL"
   ],
-  "description": "blah blah blah",
+  "description": "NATS client for Raku",
   "license": "Artistic-2.0",
   "name": "Nats",
   "perl": "6.d",
   "provides": {
-    "Nats": "lib/Nats.rakumod"
+    "Nats": "lib/Nats.rakumod",
+    "Nats::Actions": "lib/Nats/Actions.rakumod",
+    "Nats::Data": "lib/Nats/Data.rakumod",
+    "Nats::Error": "lib/Nats/Error.rakumod",
+    "Nats::Message": "lib/Nats/Message.rakumod",
+    "Nats::Route": "lib/Nats/Route.rakumod",
+    "Nats::Server": "lib/Nats/Server.rakumod",
+    "Nats::Subscription": "lib/Nats/Subscription.rakumod",
+    "Replyable": "lib/Nats/Replyable.rakumod"
   },
   "resources": [
   ],
