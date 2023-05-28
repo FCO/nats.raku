@@ -8,8 +8,6 @@
   ],
   "depends": [
     "JSON::Fast",
-    "Nats::Grammar",
-    "Nats::Replyable",
     "URL"
   ],
   "description": "NATS client for Raku",
@@ -21,11 +19,12 @@
     "Nats::Actions": "lib/Nats/Actions.rakumod",
     "Nats::Data": "lib/Nats/Data.rakumod",
     "Nats::Error": "lib/Nats/Error.rakumod",
+    "Nats::Grammar": "lib/Nats/Grammar.rakumod",
     "Nats::Message": "lib/Nats/Message.rakumod",
+    "Nats::Replyable": "lib/Nats/Replyable.rakumod",
     "Nats::Route": "lib/Nats/Route.rakumod",
     "Nats::Server": "lib/Nats/Server.rakumod",
-    "Nats::Subscription": "lib/Nats/Subscription.rakumod",
-    "Replyable": "lib/Nats/Replyable.rakumod"
+    "Nats::Subscription": "lib/Nats/Subscription.rakumod"
   },
   "resources": [
   ],

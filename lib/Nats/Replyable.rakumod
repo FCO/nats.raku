@@ -1,5 +1,5 @@
 use JSON::Fast;
-unit role Replyable;
+unit role Nats::Replyable;
 
 has Str  $.reply-to;
 

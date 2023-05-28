@@ -8,7 +8,7 @@ has Str  $.payload;
 has      $.nats where { .^can('publish') }
 
 method TWEAK(Str :$reply-to) {
-    self does Replyable($reply-to) if $reply-to && self !~~ Replyable;
+    self does Nats::Replyable($reply-to) if $reply-to && self !~~ Nats::Replyable;
 }
 
 method json() {
