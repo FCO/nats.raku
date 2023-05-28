@@ -2,6 +2,9 @@
 
 use Test;
 use Test::Mock;
+
+use lib 'lib';
+
 use Nats::Server;
 use Nats::Route;
 use Nats;

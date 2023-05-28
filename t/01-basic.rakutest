@@ -1,4 +1,7 @@
 use Test;
+
+use lib 'lib';
+
 use Nats;
 
 pass "replace me";

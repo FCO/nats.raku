@@ -1,6 +1,8 @@
 #!/usr/bin/env raku
 
 use Test;
+
+use lib 'lib';
 use Nats::Error;
 
 use-ok 'Nats::Error';

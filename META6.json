@@ -7,6 +7,7 @@
     "Test::Mock"
   ],
   "depends": [
+    "URL"
   ],
   "description": "blah blah blah",
   "license": "Artistic-2.0",

@@ -1,10 +1,13 @@
 #!/usr/bin/env raku
 
 use Test;
+use Test::Mock;
+
+use lib 'lib';
+
 use Nats::Route;
 use Nats;
 use Nats::Subscription;
-use Test::Mock;
 
 use-ok "Nats::Route";
 
