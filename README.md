@@ -1,7 +1,7 @@
 NAME
 ====
 
-Nats - client for nats
+Nats - client for NATS
 
 SYNOPSIS
 ========
@@ -41,7 +41,7 @@ react whenever signal(SIGINT) { $server.stop; exit }
 DESCRIPTION
 ===========
 
-Nats is client for [nats](http://nats.io)
+Nats is client for [NATS](http://nats.io)
 
 AUTHOR
 ======
