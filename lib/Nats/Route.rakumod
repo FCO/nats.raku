@@ -3,10 +3,6 @@ unit class Nats::Route;
 
 has @.routes;
 
-sub message is export {
-    $*MESSAGE
-}
-
 sub subscribe(&block) is export {
     my $sig    = &block.signature;
     my @params = $sig.params;
@@ -27,6 +23,10 @@ sub subscribe(&block) is export {
             }
         }
     }
+}
+
+sub message is export {
+    $*MESSAGE
 }
 
 sub route(&block) is export {
