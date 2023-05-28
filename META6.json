@@ -4,6 +4,7 @@
     "Fernando Corrêa de Oliveira"
   ],
   "build-depends": [
+    "Test::Mock"
   ],
   "depends": [
   ],
