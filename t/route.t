@@ -41,17 +41,23 @@ my $r1 = route {
 ok $ran, 'route block has ran';
 isa-ok $r1, Nats::Route, 'route returns a Nats::Route';
 
+my $queue = "my-queue";
+my $max-messages = 10;
+
 my $r2 = route -> {
-    subscribe -> "bla"               { pass "bla"         }
-    subscribe -> "bla", "ble"        { pass "bla.ble"     }
-    subscribe -> "bla", "ble", "bli" { pass "bla.ble.bli" }
-    subscribe -> $                   { pass "*"           }
-    subscribe -> $, $                { pass "*.*"         }
-    subscribe -> $, $, $             { pass "*.*.*"       }
-    subscribe -> "bla", $, "bli"     { pass "bla.*.bli"   }
-    subscribe -> $, "ble", $         { pass "*.ble.*"     }
+    subscribe -> "bla"                          { pass "bla"         }
+    subscribe -> "bla", "ble"                   { pass "bla.ble"     }
+    subscribe -> "bla", "ble", "bli"            { pass "bla.ble.bli" }
+    subscribe -> $                              { pass "*"           }
+    subscribe -> $, $                           { pass "*.*"         }
+    subscribe -> $, $, $                        { pass "*.*.*"       }
+    subscribe -> "bla", $, "bli"                { pass "bla.*.bli"   }
+    subscribe -> $, "ble", $                    { pass "*.ble.*"     }
+    subscribe -> "bla", :$queue                 { pass "bla"         }
+    subscribe -> "bla", :$max-messages          { pass "bla"         }
+    subscribe -> "bla", :$queue, :$max-messages { pass "bla"         }
 }
-is $r2.routes.elems, 8, 'route block has created 8 routes';
+is $r2.routes.elems, 11, 'route block has created 11 routes';
 
 my Supplier $supplier .= new;
 my $nats = mocked Nats, returning => {
@@ -71,14 +77,17 @@ check-mock $nats,
     *.called("subscribe", with => :("*.*.*")),
     *.called("subscribe", with => :("bla.*.bli")),
     *.called("subscribe", with => :("*.ble.*")),
+    *.called("subscribe", with => :("bla", :$queue)),
+    *.called("subscribe", with => :("bla", :$max-messages)),
+    *.called("subscribe", with => :("bla", :$queue, :$max-messages)),
 ;
 
-my @returns = <bla bla.ble bla.ble.bli bla bla.ble bla.ble.bli bla.ble.bli bla.ble.bli>;
+my @returns = <bla bla.ble bla.ble.bli bla bla.ble bla.ble.bli bla.ble.bli bla.ble.bli bla bla bla>;
 $supplier.emit: my $message = mocked Nats::Message, computing => {
     subject => -> { @returns.shift },
 }
 is @returns.elems, 0, 'supplier has emitted all messages';
 
-check-mock $message, *.called("subject", :8times);
+check-mock $message, *.called("subject", :11times);
 
 done-testing;

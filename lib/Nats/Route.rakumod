@@ -3,7 +3,7 @@ unit class Nats::Route;
 
 has @.routes;
 
-sub subscribe(&block) is export {
+sub subscribe(&block, Str :$queue, UInt :$max-messages) is export {
     my $sig    = &block.signature;
     my @params = $sig.params;
 
@@ -17,7 +17,11 @@ sub subscribe(&block) is export {
 
     @*ROUTES.append: do for @subjects -> $subject {
         -> Nats $nats {
-            my $sub = $nats.subscribe: $subject;
+            my $sub = $nats.subscribe:
+                      $subject,
+                      |(:$queue with $queue),
+                      |(:$max-messages with $max-messages),
+            ;
             $sub.supply.tap: -> $*MESSAGE {
                 block |$*MESSAGE.subject.split(".")
             }
