@@ -15,7 +15,7 @@ method msg-option:sym<INFO>($/) {make Nats::Data.new: :type<info>, :data(from-js
 method msg-option:sym<MSG>($/) {
     make Nats::Message.new:
         :subject($<subject>.made),
-        :sid(~$<sid>),
+        :sid(+$<sid>),
         |(:reply-to(.Str) with $<reply-to>),
         :payload(~$<payload>),
         :$!nats,

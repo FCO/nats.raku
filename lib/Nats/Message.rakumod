@@ -3,7 +3,7 @@ use Nats::Replyable;
 unit class Nats::Message;
 
 has Str  $.subject;
-has Str  $.sid;
+has UInt $.sid;
 has Str  $.payload;
 has      $.nats where { .^can('publish') }
 

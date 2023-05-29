@@ -4,7 +4,8 @@
     "Fernando Corrêa de Oliveira"
   ],
   "build-depends": [
-    "Test::Mock"
+    "Test::Mock",
+    "JSON::Fast"
   ],
   "depends": [
     "JSON::Fast",
