@@ -8,7 +8,8 @@ use Nats::Data;
 use Nats::Message;
 use Nats::Subscription;
 
-has URL()   @.servers;
+has $.socket-class = IO::Socket::Async;
+has URL()   @.servers = [ URL.new("nats://127.0.0.1:4333"), ];
 has Supply  $.supply;
 has %!subs;
 has $!conn;
@@ -16,12 +17,12 @@ has Supplier $!supplier;
 
 has Bool() $!DEBUG = %*ENV<NATS_DEBUG>;
 
-method pick-server {
+method !pick-server {
     @!servers.pick;
 }
 
 method !get-supply {
-    IO::Socket::Async.connect(.hostname, .port) with self.pick-server
+    $!socket-class.connect(.hostname, .port) with self!pick-server
 }
 
 method start {
@@ -81,7 +82,7 @@ method subscribe($subject, :$queue, :$max-messages) {
     ;
     $sub.messages-from-supply: $!supply;
     %!subs{$sub.sid} = $sub;
-    self!print: "SUB", $subject, $queue // Empty, $sub.sid;
+    self!print: "SUB", $subject, $queue // Empty, $sub.sid, $max-messages // Empty;
     $sub
 }
 
