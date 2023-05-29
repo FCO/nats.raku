@@ -1,3 +1,5 @@
+[![test](https://github.com/FCO/nats/actions/workflows/test.yml/badge.svg)](https://github.com/FCO/nats/actions/workflows/test.yml)
+
 NAME
 ====
 
