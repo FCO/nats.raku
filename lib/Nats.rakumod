@@ -8,14 +8,17 @@ use Nats::Data;
 use Nats::Message;
 use Nats::Subscription;
 
+
 has $.socket-class = IO::Socket::Async;
-has URL()   @.servers = [ URL.new("nats://127.0.0.1:4333"), ];
+has URL()   @.servers = self.default-url;
 has Supply  $.supply;
 has %!subs;
 has Promise $!conn .= new;
 has Supplier $!supplier;
 
 has Bool() $!DEBUG = %*ENV<NATS_DEBUG>;
+
+method default-url { URL.new: "nats://127.0.0.1:4222" }
 
 method !pick-server {
     @!servers.pick;

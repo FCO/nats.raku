@@ -2,8 +2,8 @@ use Nats;
 unit class Nats::Server;
 
 has       $.nats-class = Nats;
-has Str() @.servers = "nats://127.0.0.1:4222";
-has Nats  $.nats    = $!nats-class.new: :servers(@!servers);
+has Str() @.servers    = Nats.default-url;
+has Nats  $.nats       = $!nats-class.new: :@!servers;
 has       $.application is required;
 
 method start {

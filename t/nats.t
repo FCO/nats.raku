@@ -24,7 +24,7 @@ my $nats = Nats.new: :$socket-class;
 isa-ok $nats, Nats;
 my $p = $nats.start;
 isa-ok $p, Promise;
-check-mock $socket-class, *.called("connect", with => :("127.0.0.1", 4333));
+check-mock $socket-class, *.called("connect", with => :("127.0.0.1", 4222));
 check-mock $conn,         *.called("Supply", :once);
 
 lives-ok { $supplier.emit: "+OK" }, "accepts +ok";

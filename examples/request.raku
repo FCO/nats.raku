@@ -4,7 +4,7 @@ use lib "lib";
 
 use Nats;
 
-given Nats.new(:servers<nats://127.0.0.1:4222>) {
+given Nats.new {
     for 1 .. Inf -> $i {
         react {
             whenever .start {
