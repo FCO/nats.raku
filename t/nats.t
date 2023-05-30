@@ -64,7 +64,8 @@ check-mock $conn,
     *.called("print", :once, with => :("PING\r\n")),
     *.called("print", :once, with => :("SUB foo 0\r\n")),
     *.called("print", :once, with => :("SUB bar baz 1\r\n")),
-    *.called("print", :once, with => :("SUB qux 2 3\r\n")),
+    *.called("print", :once, with => :("SUB qux 2\r\n")),
+    *.called("print", :once, with => :("UNSUB 2 3\r\n")),
     *.called("print", :once, with => :("PUB foo 11\r\nhello world\r\n")),
     *.called("print", :once, with => :("PUB bar qux 11\r\nhello world\r\n"))
 ;

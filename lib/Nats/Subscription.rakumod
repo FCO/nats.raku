@@ -11,3 +11,7 @@ has        $.nats;
 method messages-from-supply(Supply $_) {
     $!supply = .grep: *.sid eq $!sid
 }
+
+method unsubscribe(UInt :$max-messages) {
+    $!nats.unsubscribe: $!sid, |(:$max-messages // Empty);
+}
