@@ -9,12 +9,12 @@ use Nats::Message;
 use Nats::Subscription;
 
 
-has $.socket-class = IO::Socket::Async;
-has URL()   @.servers = self.default-url;
-has Supply  $.supply;
+has $.socket-class       = IO::Socket::Async;
 has %!subs;
-has Promise $!conn .= new;
-has Supplier $!supplier;
+has URL()    @.servers   = self.default-url;
+has Promise  $!conn     .= new;
+has Supplier $!supplier .= new;
+has Supply   $.supply    = $!supplier.Supply;
 
 has Bool() $!DEBUG = %*ENV<NATS_DEBUG>;
 
@@ -33,8 +33,6 @@ method !get-supply {
 
 method start {
     my Promise $start .= new;
-    $!supplier .= new;
-    $!supply = $!supplier.Supply;
     self!get-supply.then: -> $conn {
         $!conn.keep: $conn.result;
         with $start {
@@ -120,7 +118,7 @@ multi method unsubscribe(UInt $sid, UInt :$max-messages) {
     %!subs{$sid}:delete;
 }
 
-method publish(Str $subject, Str() $payload, Str :$reply-to) {
+method publish(Str $subject, Str() $payload = "", Str :$reply-to) {
     self!print: "PUB", $subject, $reply-to // Empty, "{ $payload.chars }\r\n$payload";
 }
 

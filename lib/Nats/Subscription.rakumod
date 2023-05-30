@@ -8,7 +8,7 @@ has UInt   $.max-messages;
 has Supply $.supply;
 has        $.nats;
 
-method messages-from-supply(Supply $_) {
+method messages-from-supply(Supply:D $_) {
     $!supply = .grep: *.sid eq $!sid
 }
 

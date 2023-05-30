@@ -3,7 +3,7 @@ unit role Nats::Replyable;
 
 has Str  $.reply-to;
 
-method reply(Str $payload) {
+method reply(Str() $payload = "") {
     $.nats.publish: $!reply-to, $payload
 }
 
