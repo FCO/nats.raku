@@ -1,0 +1,71 @@
+#!/usr/bin/env raku
+
+use Test;
+use Test::Mock;
+
+use lib 'lib';
+
+use Nats::Client;
+use Nats::Subscriptions;
+use Nats;
+
+use-ok 'Nats::Client';
+
+can-ok Nats::Client, 'new';
+can-ok Nats::Client, 'servers';
+can-ok Nats::Client, 'nats';
+can-ok Nats::Client, 'subscriptions';
+can-ok Nats::Client, 'start';
+can-ok Nats::Client, 'stop';
+
+my UInt $counter = 0;
+my $nats = mocked Nats, returning => {
+    start => Promise.kept,
+    stop  => Empty,
+}
+
+my $subscriptions = mocked Nats::Subscriptions, returning => {
+    subscriptions => [
+        |(-> $n {
+            pass "running route { $counter + 1 }";
+            is $n, $nats, "passing nats to route { $counter + 1 }";
+            $counter++
+        } xx 5),
+    ]
+}
+
+my $client = Nats::Client.new(
+    client        => [],
+    nats          => $nats,
+    subscriptions => $subscriptions,
+);
+
+subtest "Nats::Client" => {
+    plan 11;
+    $client.start;
+    is $counter, 5, "ran all subscriptions";
+    $client.stop;
+}
+
+check-mock $subscriptions,
+    *.called("subscriptions", times => 1, with => :()),
+;
+
+check-mock $nats,
+    *.called("start", times => 1, with => :()),
+    *.called("stop",  times => 1, with => :()),
+;
+
+is Nats::Client.new(:subscriptions).servers, <nats://127.0.0.1:4222>, "default servers";
+
+my $nats-class = mocked Nats, overriding => {
+    new => -> *%pars {
+        is %pars<servers>, [ "nats://127.0.0.0.1:4333", ], "parses servers";
+    }
+}
+
+subtest "Nats::Server create nats" => {
+    Nats::Client.new(:subscriptions, :nats-class($nats-class));
+}
+
+done-testing

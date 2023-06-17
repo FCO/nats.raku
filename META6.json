@@ -23,8 +23,8 @@
     "Nats::Grammar": "lib/Nats/Grammar.rakumod",
     "Nats::Message": "lib/Nats/Message.rakumod",
     "Nats::Replyable": "lib/Nats/Replyable.rakumod",
-    "Nats::Route": "lib/Nats/Route.rakumod",
-    "Nats::Server": "lib/Nats/Server.rakumod",
+    "Nats::Subscriptions": "lib/Nats/Subscriptions.rakumod",
+    "Nats::Client": "lib/Nats/Client.rakumod",
     "Nats::Subscription": "lib/Nats/Subscription.rakumod"
   },
   "resources": [

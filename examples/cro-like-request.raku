@@ -3,12 +3,12 @@
 use lib "lib";
 
 use Nats;
-use Nats::Server;
-use Nats::Route;
+use Nats::Client;
+use Nats::Subscriptions;
 
 my $nats = Nats.new;
 
-my $application = route {
+my $subscriptions = subscriptions {
     my Int %couter;
     subscribe -> "counter", Str $name, "increment" {
         say "$name: ", %couter{$name}++
@@ -27,14 +27,14 @@ my $application = route {
     }
 }
 
-my $server = Nats::Server.new: :$nats, :$application;
+my $client = Nats::Client.new: :$nats, :$subscriptions;
 
-$server.start;
+$client.start;
 
 for 1 .. Inf -> UInt $count {
     sleep 1;
     react {
-        whenever signal(SIGINT) { $server.stop; exit }
+        whenever signal(SIGINT) { $client.stop; exit }
         whenever Promise.in: 1 {done}
         whenever $nats.request: "bla.ble{ $count }.bli", "testing... { $count }" {
             LAST done;

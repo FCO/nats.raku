@@ -1,7 +1,7 @@
 use Nats;
-unit class Nats::Route;
+unit class Nats::Subscriptions;
 
-has @.routes;
+has @.subscriptions;
 
 sub subscribe(&block, Str :$queue, UInt :$max-messages) is export {
     my $sig    = &block.signature;
@@ -15,7 +15,7 @@ sub subscribe(&block, Str :$queue, UInt :$max-messages) is export {
         })
     ).map: *.join: ".";
 
-    @*ROUTES.append: do for @subjects -> $subject {
+    @*SUBSCRIPTIONS.append: do for @subjects -> $subject {
         -> Nats $nats {
             my $sub = $nats.subscribe:
                       $subject,
@@ -33,8 +33,8 @@ sub message is export {
     $*MESSAGE
 }
 
-sub route(&block) is export {
-    my @*ROUTES;
+sub subscriptions(&block) is export {
+    my @*SUBSCRIPTIONS;
     block;
-    Nats::Route.new: :routes(@*ROUTES)
+    Nats::Subscriptions.new: :subscriptions(@*SUBSCRIPTIONS)
 }

@@ -11,7 +11,7 @@ SYNOPSIS
 ```raku
 use Nats;
 
-given Nats.new(:servers<nats://127.0.0.1:4222>) {
+given Nats.new {
     react whenever .start {
         whenever .subscribe("bla.ble.bli").supply {
             say "Received: { .payload }";
@@ -21,10 +21,10 @@ given Nats.new(:servers<nats://127.0.0.1:4222>) {
 ```
 
 ```raku
-use Nats::Server;
-use Nats::Route;
+use Nats::Client;
+use Nats::Subscriptions;
 
-my $application = route {
+my $subscriptions = subscriptions {
     subscribe -> "bla", $ble, "bli" {
         say "ble: $ble";
         say "payload: ", message.payload;
@@ -33,7 +33,7 @@ my $application = route {
     }
 }
 
-my $server = Nats::Server.new: :$application;
+my $server = Nats::Client.new: :$subscriptions;
 
 $server.start;
 

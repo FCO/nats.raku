@@ -2,10 +2,10 @@
 
 use lib "lib";
 
-use Nats::Server;
-use Nats::Route;
+use Nats::Client;
+use Nats::Subscriptions;
 
-my $application = route {
+my $subscriptions = subscriptions {
     subscribe -> "bla", $ble, "bli" {
         say "ble: $ble";
         say "payload: ", message.payload;
@@ -14,8 +14,8 @@ my $application = route {
     }
 }
 
-my $server = Nats::Server.new: :$application;
+my $client = Nats::Client.new: :$subscriptions;
 
-$server.start;
+$client.start;
 
-react whenever signal(SIGINT) { $server.stop; exit }
+react whenever signal(SIGINT) { $client.stop; exit }

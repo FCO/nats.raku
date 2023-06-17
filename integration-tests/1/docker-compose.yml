@@ -1,0 +1,8 @@
+services:
+  nats:
+    image: nats:latest
+  test:
+    build: .
+    environment:
+      NATS_DEBUG: 1
+      NATS_SERVERS: nats://nats:4333
