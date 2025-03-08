@@ -18,18 +18,19 @@
   "provides": {
     "Nats": "lib/Nats.rakumod",
     "Nats::Actions": "lib/Nats/Actions.rakumod",
+    "Nats::Client": "lib/Nats/Client.rakumod",
     "Nats::Data": "lib/Nats/Data.rakumod",
     "Nats::Error": "lib/Nats/Error.rakumod",
     "Nats::Grammar": "lib/Nats/Grammar.rakumod",
+    "Nats::JetStream": "lib/Nats/JetStream.rakumod",
     "Nats::Message": "lib/Nats/Message.rakumod",
     "Nats::Replyable": "lib/Nats/Replyable.rakumod",
-    "Nats::Subscriptions": "lib/Nats/Subscriptions.rakumod",
-    "Nats::Client": "lib/Nats/Client.rakumod",
-    "Nats::Subscription": "lib/Nats/Subscription.rakumod"
+    "Nats::Subscription": "lib/Nats/Subscription.rakumod",
+    "Nats::Subscriptions": "lib/Nats/Subscriptions.rakumod"
   },
   "resources": [
   ],
-  "source-url": "",
+  "source-url": "https://github.com/FCO/nats.git",
   "tags": [
   ],
   "test-depends": [

@@ -12,7 +12,7 @@ given Nats.new {
                     say "timeout";
                     done
                 }
-                whenever .request: "bla.ble_{ $i }.bli", "testing request: $i" {
+                whenever .request: "bla.ble_{ $i }.bli", "testing\n\trequest:\n\t\t$i" 1 {
                     LAST done;
                     say "got response:\n{ .json.indent: 4 }";
                 }

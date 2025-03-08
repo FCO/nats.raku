@@ -7,7 +7,7 @@ use Nats::Actions;
 use Nats::Data;
 use Nats::Message;
 use Nats::Subscription;
-
+use Nats::JetStream;
 
 has $.socket-class       = IO::Socket::Async;
 has %!subs;
@@ -18,7 +18,7 @@ has Supply   $.supply    = $!supplier.Supply;
 
 has Bool() $!DEBUG = %*ENV<NATS_DEBUG>;
 
-method default-url { URL.new: "nats://127.0.0.1:4222" }
+method default-url { URL.new: %*ENV<NATS_URL> // "nats://127.0.0.1:4222" }
 
 method !pick-server {
     @!servers.pick;
@@ -100,12 +100,12 @@ method !gen-inbox {
 
 method request(
     Str   $subject,
-    Str() $payload,
+    Str() $payload?,
     Str   :$reply-to     = self!gen-inbox,
     UInt  :$max-messages = 1,
 ) {
     my $sub = self.subscribe: $reply-to, :$max-messages;
-    self.publish: $subject, $payload, :$reply-to;
+    self.publish: $subject, |(.Str with $payload), :$reply-to;
     $sub.supply.head: $max-messages;
 }
 
@@ -120,6 +120,10 @@ multi method unsubscribe(UInt $sid, UInt :$max-messages) {
 
 method publish(Str $subject, Str() $payload = "", Str :$reply-to) {
     self!print: "PUB", $subject, $reply-to // Empty, "{ $payload.chars }\r\n$payload";
+}
+
+method stream($name, *@subjects, |c) {
+    Nats::Stream.new: :nats(self), :$name, |(:@subjects if @subjects), |c
 }
 
 method !in(|c) {
