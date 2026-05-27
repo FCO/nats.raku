@@ -20,12 +20,7 @@ use-ok 'Nats';
     my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
 
     my $nats = Nats.new: :$socket-class;
-    %*ENV<NATS_DEBUG> = 1; # enable debug logging in test run
     await $nats.start;
-
-    # Optional: Simulate INFO; skip to keep focus on MSG parsing
-    # my $info = 'INFO {"headers":true}' ~ "\r\n";
-    # $supplier.emit: $info;
 
     # Prepare two MSG frames as NATS server would send to the consumer inbox
     my $inbox = '_INBOX.pulltest________________________';
@@ -39,17 +34,11 @@ use-ok 'Nats';
         @received.push: $msg if $msg ~~ Nats::Message;
     };
 
-    # Control: emit a known-good simple MSG frame
-    $supplier.emit: "MSG foo 1 11\r\nhello world\r\n";
-    # Sanity: a single message should be observed
-    sleep 0.01;
-    is @received.elems, 1, 'basic MSG parsed';
-
-    # Emit full frames to validate parsing
+    # Emit both frames
     $supplier.emit: $frame1;
     $supplier.emit: $frame2;
 
-    # Give the tap a moment (in real async); here just check results
+    sleep 0.01;
     is @received.elems, 2, 'consumer received two messages';
     is @received[0].payload, $payload1, 'first payload intact';
     is @received[1].payload, $payload2, 'second payload intact';

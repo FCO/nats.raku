@@ -17,16 +17,17 @@ method TWEAK(:$reply-to) {
     }
     # Try to parse headers if payload includes NATS/1.0 header block
     if $!payload.starts-with('NATS/1.0') {
-        my ($head, $body) = $!payload.split("\r\n\r\n", 2);
+        my ($head, $body) = $!payload.split(/\n\n/, 2);
         my %h;
         for $head.lines.skip(1) -> $line {
             next unless $line.chars;
             my ($k, $v) = $line.split(':', 2);
+            next unless $v.defined;
             %h{$k.trim} //= [];
             %h{$k.trim}.push: $v.trim;
         }
         %.headers = %h;
-        $!payload = $body // "";
+        $!payload = $body // $!payload;
     }
 }
 

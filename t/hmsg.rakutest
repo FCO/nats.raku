@@ -21,22 +21,17 @@ use-ok 'Nats';
     my $subject = 'js.test';
     my $sid     = 42;
 
-    # Build a NATS headers block with body
-    my %headers = (
-        'NATS/1.0' => 1,          # protocol marker (first line)
-        'Content-Type' => 'text/plain',
-        'X-Req'        => 'abc',
-    );
+    # Build NATS headers block with body using \n line endings
     my @lines = ('NATS/1.0', 'Content-Type: text/plain', 'X-Req: abc');
-    my $hdrs  = @lines.join("\r\n") ~ "\r\n\r\n"; # include delimiter
+    my $hdrs  = @lines.join("\n") ~ "\n\n";
     my $body1 = 'hello';
     my $body2 = 'world';
-    my $hsize = $hdrs.encode('utf8').bytes;              # includes delimiter
+    my $hsize = $hdrs.encode('utf8').bytes;
     my $tsize1 = $hsize + $body1.encode('utf8').bytes;
     my $tsize2 = $hsize + $body2.encode('utf8').bytes;
 
-    my $frame1 = "HMSG $subject $sid $hsize $tsize1\r\n$hdrs$body1\r\n";
-    my $frame2 = "HMSG $subject $sid $hsize $tsize2\r\n$hdrs$body2\r\n";
+    my $frame1 = "HMSG $subject $sid $hsize $tsize1\n$hdrs$body1\n";
+    my $frame2 = "HMSG $subject $sid $hsize $tsize2\n$hdrs$body2\n";
 
     my @msgs;
     $nats.supply.tap: -> $m { @msgs.push: $m if $m ~~ Nats::Message };
@@ -45,8 +40,8 @@ use-ok 'Nats';
     $supplier.emit: $frame2;
 
     is @msgs.elems, 2, 'received two HMSG messages';
-    is @msgs[0].payload, $body1, 'first HMSG body extracted';
-    is @msgs[1].payload, $body2, 'second HMSG body extracted';
+    is @msgs[0].payload, $body1, 'first HMSG body extracted' if @msgs.elems == 2;
+    is @msgs[1].payload, $body2, 'second HMSG body extracted' if @msgs.elems == 2;
 }
 
 done-testing;

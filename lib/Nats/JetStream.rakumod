@@ -21,15 +21,6 @@ constant CONSUMER-DELETE   = JS-API ~ '.CONSUMER.DELETE.%s.%s';
 constant CONSUMER-LIST     = JS-API ~ '.CONSUMER.LIST.%s';
 constant CONSUMER-MSG-NEXT = JS-API ~ '.CONSUMER.MSG.NEXT.%s.%s';
 
-# Enum types as constants for validation
-enum RetentionPolicy  <limits interest workqueue>;
-enum DiscardPolicy    <old new>;
-enum StorageType      <file memory>;
-enum StoreCompression <none s2>;
-enum DeliverPolicy    <all last per-subject last-per-subject new>;
-enum AckPolicy        <none explicit all>;
-enum ReplayPolicy     <instant original>;
-
 # Convert object attributes to a JetStream-compatible Map (kebab→snake_case)
 sub to-map($obj, *%pars --> Map()) {
     $obj.^attributes.map: -> $attr {
@@ -196,7 +187,9 @@ class Nats::Consumer {
         my $subj = $.subject: CONSUMER-MSG-NEXT, $!stream, $!name;
 
         supply {
-            whenever Promise.in($expires) { done } if $expires;
+            if $expires {
+                whenever Promise.in($expires) { done }
+            }
             loop {
                 my $response = $!nats.request:
                     $subj,

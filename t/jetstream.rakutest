@@ -347,15 +347,4 @@ use-ok 'Nats::JetStream';
     is $stream.max-msgs, 1000, 'from-map updates max-msgs';
 }
 
-# Enum exports
-{
-    ok RetentionPolicy::limits, 'RetentionPolicy enum exported';
-    ok DiscardPolicy::old, 'DiscardPolicy enum exported';
-    ok StorageType::file, 'StorageType enum exported';
-    ok DeliverPolicy::all, 'DeliverPolicy enum exported';
-    ok AckPolicy::explicit, 'AckPolicy enum exported';
-    ok ReplayPolicy::instant, 'ReplayPolicy enum exported';
-    ok StoreCompression::none, 'StoreCompression enum exported';
-}
-
 done-testing;
