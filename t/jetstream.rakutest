@@ -39,6 +39,20 @@ use-ok 'Nats::JetStream';
     check-mock $nats, *.called('request', :once);
 }
 
+# Stream update
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            is $subject, '$JS.API.STREAM.UPDATE.MY', 'stream update subject';
+            my %cfg = from-json($payload);
+            is %cfg<name>, 'MY', 'stream update config name';
+            is %cfg<subjects>[0], 'bar', 'stream update config subjects';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY', subjects => ['bar']).update;
+    check-mock $nats, *.called('request', :once);
+}
+
 # Stream info
 {
     my $nats = mocked Nats, overriding => {
@@ -72,6 +86,54 @@ use-ok 'Nats::JetStream';
     check-mock $nats, *.called('request', :once);
 }
 
+# Stream names
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject {
+            is $subject, '$JS.API.STREAM.NAMES', 'stream names subject';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'ANY').names;
+    check-mock $nats, *.called('request', :once);
+}
+
+# Stream consumers list
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject {
+            is $subject, '$JS.API.CONSUMER.LIST.MY', 'consumer list subject';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY').consumers;
+    check-mock $nats, *.called('request', :once);
+}
+
+# Stream with extended attributes
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            my %cfg = from-json($payload);
+            is %cfg<discard>, 'new', 'stream config discard';
+            is %cfg<max_msg_size>, 1048576, 'stream config max-msg-size';
+            is %cfg<max_msgs_per_subject>, 1000, 'stream config max-msgs-per-subject';
+            is %cfg<max_consumers>, 10, 'stream config max-consumers';
+            is %cfg<duplicate_window>, 120, 'stream config duplicate-window';
+            is %cfg<compression>, 's2', 'stream config compression';
+        }
+    };
+
+    Nats::Stream.new(
+        :nats($nats),
+        name               => 'EXT',
+        discard            => 'new',
+        max-msg-size       => 1048576,
+        max-msgs-per-subject => 1000,
+        max-consumers      => 10,
+        duplicate-window   => 120,
+        compression        => 's2',
+    ).create;
+}
+
 # Consumer create (stream-only endpoint with config payload)
 {
     my $nats = mocked Nats, overriding => {
@@ -103,6 +165,46 @@ use-ok 'Nats::JetStream';
     };
     my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
     $c.create-named;
+    check-mock $nats, *.called('request', :once);
+}
+
+# Consumer with extended config
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            my %req = from-json($payload);
+            my %cfg = %req<config>;
+            is %cfg<inactive_threshold>, 60_000_000_000, 'consumer inactive threshold in nanos';
+            is %cfg<max_batch>, 256, 'consumer max batch';
+            is %cfg<max_bytes>, 1048576, 'consumer max bytes';
+            is %cfg<description>, 'my-consumer', 'consumer description';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C',
+        :inactive-threshold(60), :max-batch(256), :max-bytes(1048576), :description('my-consumer')
+    );
+    $c.create;
+}
+
+# Consumer info
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject {
+            is $subject, '$JS.API.CONSUMER.INFO.MY.C', 'consumer info subject';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY').consumer('C').info;
+    check-mock $nats, *.called('request', :once);
+}
+
+# Consumer delete
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject {
+            is $subject, '$JS.API.CONSUMER.DELETE.MY.C', 'consumer delete subject';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY').consumer('C').delete;
     check-mock $nats, *.called('request', :once);
 }
 
@@ -149,6 +251,111 @@ use-ok 'Nats::JetStream';
     );
     $c.ack($msg);
     check-mock $nats, *.called('publish', :once);
+}
+
+# Consumer NAK
+{
+    my $nats = mocked Nats, overriding => {
+        publish => -> $subject, $payload {
+            is $subject, '$JS.ACK.MY.C', 'nak subject';
+            is $payload, '-NAK', 'nak payload';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
+    my $msg = Nats::Message.new(
+        subject  => 's', sid => 1, payload => 'p',
+        reply-to => '$JS.ACK.MY.C', nats => $nats,
+    );
+    $c.nak($msg);
+    check-mock $nats, *.called('publish', :once);
+}
+
+# Consumer term
+{
+    my $nats = mocked Nats, overriding => {
+        publish => -> $subject, $payload {
+            is $subject, '$JS.ACK.MY.C', 'term subject';
+            is $payload, '+TERM', 'term payload';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
+    my $msg = Nats::Message.new(
+        subject  => 's', sid => 1, payload => 'p',
+        reply-to => '$JS.ACK.MY.C', nats => $nats,
+    );
+    $c.term($msg);
+    check-mock $nats, *.called('publish', :once);
+}
+
+# Consumer ack-sync
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            is $subject, '$JS.ACK.MY.C', 'ack-sync subject';
+            is $payload, '+ACK', 'ack-sync payload';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
+    my $msg = Nats::Message.new(
+        subject  => 's', sid => 1, payload => 'p',
+        reply-to => '$JS.ACK.MY.C', nats => $nats,
+    );
+    $c.ack-sync($msg);
+    check-mock $nats, *.called('request', :once);
+}
+
+# Consumer ack-next with batch
+{
+    my $nats = mocked Nats, overriding => {
+        publish => -> $subject, $payload {
+            is $subject, '$JS.ACK.MY.C', 'ack-next batch subject';
+            is $payload, '+NXT 5', 'ack-next batch payload';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
+    my $msg = Nats::Message.new(
+        subject  => 's', sid => 1, payload => 'p',
+        reply-to => '$JS.ACK.MY.C', nats => $nats,
+    );
+    $c.ack-next($msg, :batch(5));
+    check-mock $nats, *.called('publish', :once);
+}
+
+# Consumer ack-next with no-wait
+{
+    my $nats = mocked Nats, overriding => {
+        publish => -> $subject, $payload {
+            is $subject, '$JS.ACK.MY.C', 'ack-next no-wait subject';
+            like $payload, /'no_wait'/, 'ack-next no-wait payload has no_wait';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
+    my $msg = Nats::Message.new(
+        subject  => 's', sid => 1, payload => 'p',
+        reply-to => '$JS.ACK.MY.C', nats => $nats,
+    );
+    $c.ack-next($msg, :no-wait);
+    check-mock $nats, *.called('publish', :once);
+}
+
+# from-map helper
+{
+    my $stream = Nats::Stream.new(name => 'TEST', nats => Nil);
+    from-map({ name => 'UPDATED', subjects => ['x', 'y'], max_msgs => 1000 }, $stream);
+    is $stream.name, 'UPDATED', 'from-map updates name';
+    is $stream.subjects[0], 'x', 'from-map updates subjects';
+    is $stream.max-msgs, 1000, 'from-map updates max-msgs';
+}
+
+# Enum exports
+{
+    ok RetentionPolicy::limits, 'RetentionPolicy enum exported';
+    ok DiscardPolicy::old, 'DiscardPolicy enum exported';
+    ok StorageType::file, 'StorageType enum exported';
+    ok DeliverPolicy::all, 'DeliverPolicy enum exported';
+    ok AckPolicy::explicit, 'AckPolicy enum exported';
+    ok ReplayPolicy::instant, 'ReplayPolicy enum exported';
+    ok StoreCompression::none, 'StoreCompression enum exported';
 }
 
 done-testing;

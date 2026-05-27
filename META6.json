@@ -11,7 +11,7 @@
     "JSON::Fast",
     "URL"
   ],
-  "description": "NATS client for Raku",
+  "description": "NATS client for Raku with JetStream support",
   "license": "Artistic-2.0",
   "name": "Nats",
   "perl": "6.d",
@@ -23,6 +23,7 @@
     "Nats::Error": "lib/Nats/Error.rakumod",
     "Nats::Grammar": "lib/Nats/Grammar.rakumod",
     "Nats::JetStream": "lib/Nats/JetStream.rakumod",
+    "Nats::JetStream::Ackable": "lib/Nats/JetStream/Ackable.rakumod",
     "Nats::Message": "lib/Nats/Message.rakumod",
     "Nats::Replyable": "lib/Nats/Replyable.rakumod",
     "Nats::Subscription": "lib/Nats/Subscription.rakumod",
@@ -32,8 +33,11 @@
   ],
   "source-url": "https://github.com/FCO/nats.raku.git",
   "tags": [
+    "nats",
+    "jetstream",
+    "messaging"
   ],
   "test-depends": [
   ],
-  "version": "0.0.1"
+  "version": "0.1.0"
 }
