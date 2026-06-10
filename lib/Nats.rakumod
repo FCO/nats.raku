@@ -16,6 +16,7 @@ has Promise  $!conn     .= new;
 has Supplier $!supplier .= new;
 has Supply   $.supply    = $!supplier.Supply;
 has Bool()   $.headers-supported = False;
+has Str      $!buffer    = '';
 
 has Bool() $!DEBUG = %*ENV<NATS_DEBUG>;
 
@@ -51,8 +52,22 @@ method stop {
 
 method handle-input {
     $!conn.result.Supply.tap: -> $line {
-        self!in($line);
-        my @cmds = Nats::Grammar.parse($line, :actions(Nats::Actions.new: :nats(self))).ast;
+        $!buffer ~= $line;
+        self!process-buffer;
+    }
+}
+
+method !process-buffer {
+    loop {
+        my $before = $!buffer;
+        my $match = Nats::Grammar.parse($!buffer, :actions(Nats::Actions.new: :nats(self)));
+        last unless $match;
+
+        my $consumed = $match.to;
+        $!buffer = $!buffer.substr($consumed);
+
+        self!in($match.Str);
+        my @cmds = $match.ast;
         for @cmds -> $cmd {
             given $cmd {
                 when Nats::Data {
@@ -152,7 +167,7 @@ method publish(
     Str   :$msg-id,
     UInt  :$timeout = 5,
 ) {
-    return self!publish-with-ack: $subject, $payload, $msg-id, :$timeout if $ack;
+    return self!publish-with-ack: $subject, $payload, :$msg-id, :$timeout if $ack;
     %headers && %headers.elems
         ?? self!hpub($subject, $payload, :%headers, :$reply-to)
         !! self!pub($subject, $payload, :$reply-to)
@@ -164,15 +179,27 @@ method !publish-with-ack(
     Str   :$msg-id,
     UInt  :$timeout = 5,
 ) {
-    # Publish and wait for JetStream PubAck by using request semantics
-    # Include Nats-Msg-Id when provided for de-duplication
+    # Publish and wait for JetStream PubAck using request semantics.
+    # Tap the subscription supply BEFORE publishing to avoid a race
+    # condition where the PubAck arrives before the tap is set up.
     my %headers;
     %headers<"Nats-Msg-Id"> = $msg-id if $msg-id.defined && $msg-id.chars;
-    my $reply = self.request: $subject, $payload, :max-messages(1),
+
+    my $reply-to  = self!gen-inbox;
+    my $sub       = self.subscribe: $reply-to, :max-messages(1);
+    my $msg-supply = $sub.supply;
+
+    # Tap now, publish after — prevents lost PubAck
+    my $p   = Promise.new;
+    my $tap = $msg-supply.tap: -> $msg { $p.keep: $msg };
+
+    self.publish: $subject, $payload, :$reply-to,
         |( %headers.elems ?? :header(:%headers) !! Empty );
-    my $p = Promise.new;
-    $reply.tap: -> $msg { $p.keep: $msg };
-    await $p
+
+    await Promise.anyof: $p, Promise.in($timeout);
+    $tap.close;
+
+    $p.so ?? $p.result !! Nil
 }
 
 method !pub(Str $subject, Str() $payload = "", Str :$reply-to) {

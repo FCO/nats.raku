@@ -13,6 +13,11 @@ constant STREAM-INFO       = JS-API ~ '.STREAM.INFO.%s';
 constant STREAM-DELETE     = JS-API ~ '.STREAM.DELETE.%s';
 constant STREAM-LIST       = JS-API ~ '.STREAM.LIST';
 constant STREAM-NAMES      = JS-API ~ '.STREAM.NAMES';
+constant STREAM-PURGE       = JS-API ~ '.STREAM.PURGE.%s';
+
+# Direct Message Subjects
+constant DIRECT-GET         = JS-API ~ '.DIRECT.GET.%s';
+constant DIRECT-GET-LAST    = JS-API ~ '.DIRECT.GET.%s.%s';
 
 # Consumer Subjects
 constant CONSUMER-CREATE   = JS-API ~ '.CONSUMER.CREATE.%s.%s';
@@ -27,7 +32,9 @@ sub to-map($obj, *%pars --> Map()) {
         my $name = $attr.name.substr(2).subst: /'-'/, "_", :g;
         next if %pars{$name}:e && !%pars{$name};
         my $val = $attr.get_value: $obj;
-        next unless $val ~~ Str | Int | Positional | Associative | Nil;
+        next unless $val.defined && $val ~~ Str | Int | Positional | Associative;
+        next if $val ~~ Associative && $val.elems == 0;
+        next if $val ~~ Positional && $val.elems == 0;
         $name => $val
     }
 }
@@ -84,6 +91,21 @@ class Nats::Stream {
     method delete  { $!nats.request: $.subject(STREAM-DELETE, $!name) }
     method list    { $!nats.request: $.subject(STREAM-LIST)           }
     method names   { $!nats.request: $.subject(STREAM-NAMES)          }
+    method purge   { $!nats.request: $.subject(STREAM-PURGE, $!name)  }
+
+    # Direct message get by sequence number
+    method get-msg(UInt $seq, Str :$subject) {
+        my $api-subject = $subject
+            ?? sprintf(DIRECT-GET-LAST, $!name, $subject)
+            !! sprintf(DIRECT-GET, $!name);
+        my %payload = last_by_subj => $seq;
+        $!nats.request: $api-subject, to-json(%payload)
+    }
+
+    # Direct get last message for a subject
+    method get-last-msg(Str $subject) {
+        $!nats.request: sprintf(DIRECT-GET-LAST, $!name, $subject), to-json({ last_by_subj => $subject })
+    }
 
     method consumer(Str $name, |c) {
         Nats::Consumer.new: |c, :$!nats, :$name, :stream($!name)
@@ -166,6 +188,15 @@ class Nats::Consumer {
 
     method delete {
         $!nats.request: $.subject(CONSUMER-DELETE, $!stream, $!name)
+    }
+
+    method update {
+        my $subject = $.subject(CONSUMER-CREATE, $!stream, $!name);
+        my %req = (
+            stream_name => $!stream,
+            config      => self.config(:include-durable(False)),
+        );
+        $!nats.request: $subject, to-json %req.Map
     }
 
     method next(UInt :$batch, UInt :$expires, Bool :$no-wait) {

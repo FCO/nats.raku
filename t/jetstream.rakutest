@@ -347,4 +347,57 @@ use-ok 'Nats::JetStream';
     is $stream.max-msgs, 1000, 'from-map updates max-msgs';
 }
 
+# Stream purge
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject {
+            is $subject, '$JS.API.STREAM.PURGE.MY', 'stream purge subject';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY').purge;
+    check-mock $nats, *.called('request', :once);
+}
+
+# Stream direct get by sequence
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            is $subject, '$JS.API.DIRECT.GET.MY', 'direct get subject';
+            my %p = from-json($payload);
+            is %p<last_by_subj>, 5, 'sequence number in payload';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY').get-msg(5);
+    check-mock $nats, *.called('request', :once);
+}
+
+# Stream direct get last per subject
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            is $subject, '$JS.API.DIRECT.GET.MY.foo', 'direct get last subject';
+            my %p = from-json($payload);
+            is %p<last_by_subj>, 'foo', 'subject in payload';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY').get-last-msg('foo');
+    check-mock $nats, *.called('request', :once);
+}
+
+# Consumer update
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            is $subject, '$JS.API.CONSUMER.CREATE.MY.C', 'consumer update subject';
+            my %req = from-json($payload);
+            is %req<stream_name>, 'MY', 'stream_name present';
+            my %cfg = %req<config>;
+            ok !(%cfg<durable_name>:exists), 'durable_name omitted in update';
+        }
+    };
+    my $c = Nats::Stream.new(:nats($nats), name => 'MY').consumer('C');
+    $c.update;
+    check-mock $nats, *.called('request', :once);
+}
+
 done-testing;
