@@ -98,7 +98,7 @@ method !process-buffer {
 }
 
 method connect {
-    self!print: "CONNECT", to-json :!pretty, %();
+    self!print: "CONNECT", to-json :!pretty, { :headers(True) };
 }
 
 method ping {
@@ -133,20 +133,12 @@ method !gen-inbox {
      UInt  :$max-messages = 1,
      :header(:%headers),
  ) {
-     # Subscribe to a unique inbox and publish the request; always return a Supply
      my $sub = self.subscribe: $reply-to, |($max-messages ?? :$max-messages !! Empty);
+     return $sub.supply unless $max-messages;
+     my $p = $sub.supply.head($max-messages);
      self.publish: $subject, |(.Str with $payload), :$reply-to,
-         |( %headers.elems ?? :header(:%headers) !! Empty );
-     my $s = $sub.supply;
-     return $s unless $max-messages;
-     supply {
-         my UInt $count = 0;
-         whenever $s -> $msg {
-             emit $msg;
-             $count++;
-             done if $count >= $max-messages;
-         }
-     }
+         |( %headers.elems ?? :header(%headers) !! Empty );
+     $p
  }
 
 multi method unsubscribe(Nats::Subscription $sub, UInt :$max-messages) {
@@ -179,26 +171,21 @@ method !publish-with-ack(
     Str   :$msg-id,
     UInt  :$timeout = 5,
 ) {
-    # Publish and wait for JetStream PubAck using request semantics.
-    # Tap the subscription supply BEFORE publishing to avoid a race
-    # condition where the PubAck arrives before the tap is set up.
     my %headers;
-    %headers<"Nats-Msg-Id"> = $msg-id if $msg-id.defined && $msg-id.chars;
+    %headers<Nats-Msg-Id> = $msg-id if $msg-id.defined && $msg-id.chars;
 
-    my $reply-to  = self!gen-inbox;
-    my $sub       = self.subscribe: $reply-to, :max-messages(1);
-    my $msg-supply = $sub.supply;
+    my $reply-to = self!gen-inbox;
+    my $sub      = self.subscribe: $reply-to, :max-messages(1);
 
-    # Tap now, publish after — prevents lost PubAck
+    # Tap BEFORE publish — avoids race where PubAck arrives before we listen
     my $p   = Promise.new;
-    my $tap = $msg-supply.tap: -> $msg { $p.keep: $msg };
+    my $tap = $sub.supply.tap: -> $msg { $p.keep: $msg };
 
     self.publish: $subject, $payload, :$reply-to,
-        |( %headers.elems ?? :header(:%headers) !! Empty );
+        |( %headers.elems ?? :header(%headers) !! Empty );
 
     await Promise.anyof: $p, Promise.in($timeout);
     $tap.close;
-
     $p.so ?? $p.result !! Nil
 }
 
@@ -220,9 +207,10 @@ method !hpub(
     my $headers-lines = @lines.join("\r\n");
     my $headers-block = $headers-lines ~ "\r\n\r\n"; # includes CRLFCRLF
     my $payload-str   = $payload // "";
-    my UInt $hsize    = $headers-block.encode('utf8').bytes; # per spec includes delimiter
+    my UInt $hsize    = $headers-block.encode('utf8').bytes;
     my UInt $tsize    = $hsize + $payload-str.encode('utf8').bytes;
-    self!print: "HPUB", $subject, $reply-to // Empty, $hsize, "$tsize\r\n$headers-block$payload-str\r\n";
+    # NB: !print adds trailing \r\n, so the payload CRLF serves as the HPUB terminator
+    self!print: "HPUB", $subject, $reply-to // Empty, $hsize, "$tsize\r\n$headers-block$payload-str";
 }
 
 method stream($name, *@subjects, |c) {

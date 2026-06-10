@@ -60,7 +60,7 @@ $nats.publish:   "foo", "hello world";
 $nats.publish:   "bar", "hello world", :reply-to<qux>;
 
 check-mock $conn,
-    *.called("print", :once, with => :("CONNECT \{}\r\n")),
+    *.called("print", :once, with => :("CONNECT \{\"headers\":true\}\r\n")),
     *.called("print", :once, with => :("PING\r\n")),
     *.called("print", :once, with => :("SUB foo 0\r\n")),
     *.called("print", :once, with => :("SUB bar baz 1\r\n")),
