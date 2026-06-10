@@ -16,7 +16,6 @@ has Promise  $!conn     .= new;
 has Supplier $!supplier .= new;
 has Supply   $.supply    = $!supplier.Supply;
 has Bool()   $.headers-supported = False;
-has Str      $!buffer    = '';
 
 has Bool() $!DEBUG = %*ENV<NATS_DEBUG>;
 
@@ -52,22 +51,8 @@ method stop {
 
 method handle-input {
     $!conn.result.Supply.tap: -> $line {
-        $!buffer ~= $line;
-        self!process-buffer;
-    }
-}
-
-method !process-buffer {
-    loop {
-        my $before = $!buffer;
-        my $match = Nats::Grammar.parse($!buffer, :actions(Nats::Actions.new: :nats(self)));
-        last unless $match;
-
-        my $consumed = $match.to;
-        $!buffer = $!buffer.substr($consumed);
-
-        self!in($match.Str);
-        my @cmds = $match.ast;
+        self!in($line);
+        my @cmds = Nats::Grammar.parse($line, :actions(Nats::Actions.new: :nats(self))).ast;
         for @cmds -> $cmd {
             given $cmd {
                 when Nats::Data {
@@ -167,7 +152,7 @@ method publish(
     Str   :$msg-id,
     UInt  :$timeout = 5,
 ) {
-    return self!publish-with-ack: $subject, $payload, :$msg-id, :$timeout if $ack;
+    return self!publish-with-ack: $subject, $payload, $msg-id, :$timeout if $ack;
     %headers && %headers.elems
         ?? self!hpub($subject, $payload, :%headers, :$reply-to)
         !! self!pub($subject, $payload, :$reply-to)
