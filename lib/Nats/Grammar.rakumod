@@ -7,7 +7,7 @@ token subject {
     [ <[ A..Z a..z 0..9 _ $ * > ]>+ '-'* ]+ %% '.'
 }
 token TOP {
-    <msg-option>+ %% \n
+    <msg-option>+
 }
 token sid { \d+ }
 token size { \d+ }
@@ -15,7 +15,7 @@ token payload(UInt $size) {
     <(
         . ** { $size }
     )>
-    <?before \n [\n | $]>
+    <?before \n | $>
     \n
 }
 token hsize { \d+ }
@@ -24,7 +24,7 @@ token hpayload(UInt $hsize, UInt $tsize) {
     <(
         . ** { $tsize }
     )>
-    <?before \n [\n | $]>
+    <?before \n | $>
     \n
 }
 proto token msg-option           { * }
