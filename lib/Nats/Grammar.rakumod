@@ -7,7 +7,7 @@ token subject {
     [ <[ A..Z a..z 0..9 _ $ * > ]>+ '-'* ]+ %% '.'
 }
 token TOP {
-    <msg-option>+
+    [<msg-option> \n*]+
 }
 token sid { \d+ }
 token size { \d+ }
