@@ -98,13 +98,13 @@ class Nats::Stream {
         my $api-subject = $subject
             ?? sprintf(DIRECT-GET-LAST, $!name, $subject)
             !! sprintf(DIRECT-GET, $!name);
-        my %payload = last_by_subj => $seq;
-        $!nats.request: $api-subject, to-json(%payload)
+        my %payload = :last_by_subj($seq);
+        $!nats.request: $api-subject, to-json %payload
     }
 
     # Direct get last message for a subject
     method get-last-msg(Str $subject) {
-        $!nats.request: sprintf(DIRECT-GET-LAST, $!name, $subject), to-json({ last_by_subj => $subject })
+        $!nats.request: sprintf(DIRECT-GET-LAST, $!name, $subject), to-json { :last_by_subj($subject) }
     }
 
     method consumer(Str $name, |c) {
@@ -137,10 +137,10 @@ class Nats::Consumer {
     has Int $.max-bytes;
 
     method config(Bool :$include-durable = True --> Map()) {
-        my %cfg = (
-            ack_policy     => $!ack-policy,
-            deliver_policy => $!deliver-policy,
-            replay_policy  => $!replay-policy,
+        my %cfg = %(
+            :ack_policy($!ack-policy),
+            :deliver_policy($!deliver-policy),
+            :replay_policy($!replay-policy),
         );
         %cfg<durable_name>    = $!durable-name    if $include-durable && $!durable-name.defined;
         %cfg<filter_subject>  = $!filter-subject  if $!filter-subject.defined;
@@ -166,18 +166,18 @@ class Nats::Consumer {
 
     method create {
         my $subject = JS-API ~ ".CONSUMER.CREATE." ~ $!stream;
-        my %req = (
-            stream_name => $!stream,
-            config      => self.config,
+        my %req = %(
+            :stream_name($!stream),
+            :config(self.config),
         );
         $!nats.request: $subject, to-json %req.Map
     }
 
     method create-named {
         my $subject = $.subject(CONSUMER-CREATE, $!stream, $!name);
-        my %req = (
-            stream_name => $!stream,
-            config      => self.config(:include-durable(False)),
+        my %req = %(
+            :stream_name($!stream),
+            :config(self.config(:include-durable(False))),
         );
         $!nats.request: $subject, to-json %req.Map
     }
@@ -192,9 +192,9 @@ class Nats::Consumer {
 
     method update {
         my $subject = $.subject(CONSUMER-CREATE, $!stream, $!name);
-        my %req = (
-            stream_name => $!stream,
-            config      => self.config(:include-durable(False)),
+        my %req = %(
+            :stream_name($!stream),
+            :config(self.config(:include-durable(False))),
         );
         $!nats.request: $subject, to-json %req.Map
     }
@@ -206,7 +206,7 @@ class Nats::Consumer {
         %payload<no_wait> = True if $no-wait;
         $!nats.request:
             $.subject(CONSUMER-MSG-NEXT, $!stream, $!name),
-            to-json(%payload.elems ?? %payload !! %())
+            to-json(%payload.elems ?? %payload !! {})
     }
 
     method msgs(UInt :$expires, Bool :$no-wait, UInt :$batch) {
@@ -224,7 +224,7 @@ class Nats::Consumer {
             loop {
                 my $response = $!nats.request:
                     $subj,
-                    to-json(%payload.elems ?? %payload !! %());
+                    to-json(%payload.elems ?? %payload !! {});
                 # Await the response; if it's a Supply, take the first emission
                 my $msg = $response ~~ Supply
                     ?? await $response.head(1).Promise
@@ -264,7 +264,7 @@ class Nats::Consumer {
     method ack-next(Nats::Message $msg, UInt :$batch = 1, Bool :$no-wait) {
         return unless $msg.^can('reply-to') && $msg.reply-to;
         my Str $payload = $no-wait
-            ?? "+NXT " ~ to-json({ no_wait => True })
+            ?? "+NXT " ~ to-json { :no_wait }
             !! "+NXT " ~ $batch;
         $!nats.publish: $msg.reply-to, $payload;
     }
