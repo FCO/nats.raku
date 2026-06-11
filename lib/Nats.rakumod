@@ -178,9 +178,7 @@ method !publish-with-ack(
     my $sub      = self.subscribe: $reply-to, :max-messages(1);
 
     # Tap BEFORE publish — avoids race where PubAck arrives before we listen
-    my $p   = Promise.new;
-    my $tap = $sub.supply.tap: -> $msg { $p.keep: $msg };
-    LEAVE $tap.close;
+    my $p = start await $sub.supply.head.Promise;
 
     self.publish: $subject, $payload, :$reply-to,
         |( %headers.elems ?? :header(%headers) !! Empty );
