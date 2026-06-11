@@ -98,7 +98,7 @@ method !process-buffer {
 }
 
 method connect {
-    self!print: "CONNECT", to-json :!pretty, { :headers(True) };
+    self!print: "CONNECT", to-json :!pretty, { :headers };
 }
 
 method ping {
@@ -131,7 +131,7 @@ method !gen-inbox {
      Str() $payload?,
      Str   :$reply-to     = self!gen-inbox,
      UInt  :$max-messages = 1,
-     :header(:%headers),
+     :header(%headers),
  ) {
      my $sub = self.subscribe: $reply-to, |($max-messages ?? :$max-messages !! Empty);
      return $sub.supply unless $max-messages;
@@ -154,7 +154,7 @@ method publish(
     Str   $subject,
     Str() $payload = "",
     Str   :$reply-to,
-          :header(:%headers),
+          :header(%headers),
     Bool  :$ack = False,
     Str   :$msg-id,
     UInt  :$timeout = 5,
@@ -178,14 +178,12 @@ method !publish-with-ack(
     my $sub      = self.subscribe: $reply-to, :max-messages(1);
 
     # Tap BEFORE publish — avoids race where PubAck arrives before we listen
-    my $p   = Promise.new;
-    my $tap = $sub.supply.tap: -> $msg { $p.keep: $msg };
+    my $p = start await $sub.supply.head.Promise;
 
     self.publish: $subject, $payload, :$reply-to,
         |( %headers.elems ?? :header(%headers) !! Empty );
 
     await Promise.anyof: $p, Promise.in($timeout);
-    $tap.close;
     $p.so ?? $p.result !! Nil
 }
 

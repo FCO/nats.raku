@@ -19,7 +19,7 @@ method TWEAK(:$reply-to) {
     if $!payload.starts-with('NATS/1.0') {
         my ($head, $body) = $!payload.split(/\n\n/, 2);
         my %h;
-        for $head.lines.skip(1) -> $line {
+        for $head.lines.skip -> $line {
             next unless $line.chars;
             my ($k, $v) = $line.split(':', 2);
             next unless $v.defined;

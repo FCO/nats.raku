@@ -177,7 +177,7 @@ class Nats::Consumer {
         my $subject = $.subject(CONSUMER-CREATE, $!stream, $!name);
         my %req = %(
             :stream_name($!stream),
-            :config(self.config(:include-durable(False))),
+            :config(self.config(:!include-durable)),
         );
         $!nats.request: $subject, to-json %req.Map
     }
@@ -194,7 +194,7 @@ class Nats::Consumer {
         my $subject = $.subject(CONSUMER-CREATE, $!stream, $!name);
         my %req = %(
             :stream_name($!stream),
-            :config(self.config(:include-durable(False))),
+            :config(self.config(:!include-durable)),
         );
         $!nats.request: $subject, to-json %req.Map
     }
@@ -227,7 +227,7 @@ class Nats::Consumer {
                     to-json(%payload.elems ?? %payload !! {});
                 # Await the response; if it's a Supply, take the first emission
                 my $msg = $response ~~ Supply
-                    ?? await $response.head(1).Promise
+                    ?? await $response.head.Promise
                     !! await $response;
                 # Check for JetStream 404/408/409 errors in the message
                 if $msg.payload && $msg.payload.starts-with('-ERR') {
@@ -244,25 +244,25 @@ class Nats::Consumer {
 
     # Ack helper: explicit ack to the message reply subject
     method ack(Nats::Message $msg) {
-        return unless $msg.^can('reply-to') && $msg.reply-to;
+        return unless $msg.?reply-to;
         $!nats.publish: $msg.reply-to, "+ACK";
     }
 
     # NAK: negative acknowledge
     method nak(Nats::Message $msg) {
-        return unless $msg.^can('reply-to') && $msg.reply-to;
+        return unless $msg.?reply-to;
         $!nats.publish: $msg.reply-to, "-NAK";
     }
 
     # Ack with server confirmation (double-ack / ack-sync)
     method ack-sync(Nats::Message $msg) {
-        return unless $msg.^can('reply-to') && $msg.reply-to;
+        return unless $msg.?reply-to;
         $!nats.request: $msg.reply-to, "+ACK";
     }
 
     # AckNext: request next messages on pull consumer via the message reply subject
     method ack-next(Nats::Message $msg, UInt :$batch = 1, Bool :$no-wait) {
-        return unless $msg.^can('reply-to') && $msg.reply-to;
+        return unless $msg.?reply-to;
         my Str $payload = $no-wait
             ?? "+NXT " ~ to-json { :no_wait }
             !! "+NXT " ~ $batch;
@@ -271,7 +271,7 @@ class Nats::Consumer {
 
     # Term: signal the server to stop redelivery
     method term(Nats::Message $msg) {
-        return unless $msg.^can('reply-to') && $msg.reply-to;
+        return unless $msg.?reply-to;
         $!nats.publish: $msg.reply-to, "+TERM";
     }
 }
