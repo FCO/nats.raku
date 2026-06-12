@@ -131,13 +131,13 @@ method !gen-inbox {
      Str() $payload?,
      Str   :$reply-to     = self!gen-inbox,
      UInt  :$max-messages = 1,
-     :header(%headers),
+     :headers(%headers),
  ) {
      my $sub = self.subscribe: $reply-to, |($max-messages ?? :$max-messages !! Empty);
      return $sub.supply unless $max-messages;
      my $p = $sub.supply.head($max-messages);
      self.publish: $subject, |(.Str with $payload), :$reply-to,
-         |( %headers.elems ?? :header(%headers) !! Empty );
+         |( %headers.elems ?? :headers(%headers) !! Empty );
      $p
  }
 
@@ -154,7 +154,7 @@ method publish(
     Str   $subject,
     Str() $payload = "",
     Str   :$reply-to,
-          :header(%headers),
+          :headers(%headers),
     Bool  :$ack = False,
     Str   :$msg-id,
     UInt  :$timeout = 5,
@@ -181,7 +181,7 @@ method !publish-with-ack(
     my $p = start await $sub.supply.head.Promise;
 
     self.publish: $subject, $payload, :$reply-to,
-        |( %headers.elems ?? :header(%headers) !! Empty );
+        |( %headers.elems ?? :headers(%headers) !! Empty );
 
     await Promise.anyof: $p, Promise.in($timeout);
     $p.so ?? $p.result !! Nil
