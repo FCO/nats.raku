@@ -1,0 +1,39 @@
+#!/usr/bin/env raku
+
+use Test;
+use Test::Mock;
+
+use lib 'lib';
+
+use Nats;
+
+# ── Setup: mock socket (same pattern as t/nats.rakutest) ─────────
+my Supplier $supplier .= new;
+my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+my $nats = Nats.new: :$socket-class;
+$nats.start;
+
+# ── Test 1: ASCII-only — chars == bytes ──────────────────────────
+# "hello" = 5 chars = 5 bytes
+$nats.publish: "foo", "hello";
+
+# ── Test 2: UTF-8 multi-byte — chars != bytes ────────────────────
+# "coração" = 7 chars, 9 bytes (ç=2, ã=2 in UTF-8)
+# BEFORE fix: !pub used .chars → PUB with 7 → NATS reads 7 of 9 bytes
+#   → 2 orphan bytes parsed as new command → 'Unknown Protocol Operation'
+# AFTER fix:  !pub uses .encode('utf8').bytes → PUB with 9 → correct
+$nats.publish: "bar", "coração";
+
+$nats.stop;
+
+# ── Verify PUB wire format uses byte counts, not char counts ─────
+# If the fix is correct, "coração" (7 chars, 9 bytes) → PUB uses 9
+# If the bug is present, "coração" (7 chars) → PUB uses 7 (WRONG)
+check-mock $conn,
+    *.called("print", :once, with => :("PUB foo 5\r\nhello\r\n")),
+    *.called("print", :once, with => :("PUB bar 9\r\ncoração\r\n")),
+;
+
+done-testing;

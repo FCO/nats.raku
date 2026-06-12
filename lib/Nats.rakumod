@@ -188,7 +188,7 @@ method !publish-with-ack(
 }
 
 method !pub(Str $subject, Str() $payload = "", Str :$reply-to) {
-    self!print: "PUB", $subject, $reply-to // Empty, "{ $payload.chars }\r\n$payload";
+    self!print: "PUB", $subject, $reply-to // Empty, "{ $payload.encode('utf8').bytes }\r\n$payload";
 }
 
 method !hpub(
