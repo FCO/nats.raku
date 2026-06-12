@@ -50,12 +50,12 @@ new
 ---
 
 ```raku
-my $nats = Nats.new: :servers[@urls], :debug;
+my $nats = Nats.new: :servers[@urls];
 ```
 
 Options:
-- **`:servers`** — array of NATS URLs (default: `127.0.0.1:4222`)
-- **`:debug`** — enable debug output
+- **`:servers`** — array of NATS URLs (default: `nats://127.0.0.1:4222`)
+- Debug output: set the `NATS_DEBUG` environment variable to enable
 
 start
 -----
@@ -82,7 +82,7 @@ Publishes a message to a subject.
 Options:
 - **`:reply-to`** — reply subject for request-reply patterns
 - **`:headers`** — Hash of NATS headers (uses HPUB protocol)
-- **`:ack`** — enable JetStream publish-with-ack (returns PubAck or Nil)
+- **`:ack`** — enable JetStream publish-with-ack (returns Nats::Message or Nil)
 - **`:msg-id`** — deduplication ID (requires `:ack`)
 - **`:timeout`** — ack timeout in seconds (default: 5)
 
@@ -141,13 +141,14 @@ See `Nats::JetStream` for stream and consumer management.
 ```raku
 use Nats::JetStream;
 
-my $js = Nats::JetStream.new: :$nats;
-$js.create-stream: 'mystream', :subjects['foo.>'];
-my $consumer = $js.create-consumer: 'mystream', 'myconsumer';
+my $stream = $nats.stream: 'mystream', :subjects['foo.>'];
+await $stream.create;
+my $consumer = $stream.consumer: 'myconsumer';
+await $consumer.create-named;
 
-react whenever $js.pull-consumer('mystream', 'myconsumer').msgs {
+react whenever $consumer.msgs(:batch, :no-wait) {
     say .payload;
-    .ack;
+    .ack if .^can('ack');
 }
 ```
 

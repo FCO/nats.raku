@@ -279,12 +279,12 @@ core NATS (PUB/SUB, request-reply) and JetStream persistent streams.
 =head2 new
 
 =begin code :lang<raku>
-my $nats = Nats.new: :servers[@urls], :debug;
+my $nats = Nats.new: :servers[@urls];
 =end code
 
 Options:
-=item C<:servers> — array of NATS URLs (default: C<127.0.0.1:4222>)
-=item C<:debug> — enable debug output
+=item C<:servers> — array of NATS URLs (default: C<nats://127.0.0.1:4222>)
+=item Debug output: set the C<NATS_DEBUG> environment variable to enable
 
 =head2 start
 
@@ -309,7 +309,7 @@ Publishes a message to a subject.
 Options:
 =item C<:reply-to> — reply subject for request-reply patterns
 =item C<:headers> — Hash of NATS headers (uses HPUB protocol)
-=item C<:ack> — enable JetStream publish-with-ack (returns PubAck or Nil)
+=item C<:ack> — enable JetStream publish-with-ack (returns C<Nats::Message> or Nil)
 =item C<:msg-id> — deduplication ID (requires :ack)
 =item C<:timeout> — ack timeout in seconds (default: 5)
 
@@ -363,13 +363,14 @@ See C<Nats::JetStream> for stream and consumer management.
 =begin code :lang<raku>
 use Nats::JetStream;
 
-my $js = Nats::JetStream.new: :$nats;
-$js.create-stream: 'mystream', :subjects['foo.>'];
-my $consumer = $js.create-consumer: 'mystream', 'myconsumer';
+my $stream = $nats.stream: 'mystream', :subjects['foo.>'];
+await $stream.create;
+my $consumer = $stream.consumer: 'myconsumer';
+await $consumer.create-named;
 
-react whenever $js.pull-consumer('mystream', 'myconsumer').msgs {
+react whenever $consumer.msgs(:batch, :no-wait) {
     say .payload;
-    .ack;
+    .ack if .^can('ack');
 }
 =end code
 
