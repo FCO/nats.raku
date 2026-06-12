@@ -26,15 +26,12 @@ use Nats::Subscriptions;
 
 my $subscriptions = subscriptions {
     subscribe -> "bla", $ble, "bli" {
-        say "ble: $ble";
         say "payload: ", message.payload;
-
-        message.?reply-json: { :status<ok>, :$ble, :payload(message.payload) };
+        message.?reply-json: { :status<ok>, :$ble };
     }
 }
 
 my $server = Nats::Client.new: :$subscriptions;
-
 $server.start;
 
 react whenever signal(SIGINT) { $server.stop; exit }
@@ -43,17 +40,123 @@ react whenever signal(SIGINT) { $server.stop; exit }
 DESCRIPTION
 ===========
 
-Nats is client for [NATS](http://nats.io)
+Nats is a Raku client for the NATS messaging system. It supports
+core NATS (PUB/SUB, request-reply) and JetStream persistent streams.
+
+METHODS
+=======
+
+new
+---
+
+```raku
+my $nats = Nats.new: :servers[@urls], :debug;
+```
+
+Options:
+- **`:servers`** — array of NATS URLs (default: `127.0.0.1:4222`)
+- **`:debug`** — enable debug output
+
+start
+-----
+
+```raku
+await $nats.start;
+```
+
+Connects to the NATS server and begins processing messages.
+Returns a Promise kept on connection.
+
+publish
+-------
+
+```raku
+$nats.publish: $subject, $payload;
+$nats.publish: $subject, $payload, :reply-to($inbox);
+$nats.publish: $subject, $payload, :headers(%headers);
+$nats.publish: $subject, $payload, :ack, :msg-id($id), :timeout(10);
+```
+
+Publishes a message to a subject.
+
+Options:
+- **`:reply-to`** — reply subject for request-reply patterns
+- **`:headers`** — Hash of NATS headers (uses HPUB protocol)
+- **`:ack`** — enable JetStream publish-with-ack (returns PubAck or Nil)
+- **`:msg-id`** — deduplication ID (requires `:ack`)
+- **`:timeout`** — ack timeout in seconds (default: 5)
+
+With `:headers`, the method uses HPUB (headers publish) which correctly
+counts both header block size and total size in bytes for UTF-8 payloads.
+
+subscribe
+---------
+
+```raku
+my $sub = $nats.subscribe: "foo.>";
+my $sub = $nats.subscribe: "bar", :queue<workers>;
+my $sub = $nats.subscribe: "baz", :max-messages(10);
+```
+
+Creates a subscription. Returns a `Nats::Subscription`.
+
+Options:
+- **`:queue`** — queue group name
+- **`:max-messages`** — auto-unsubscribe after N messages
+
+request
+-------
+
+```raku
+my $supply = $nats.request: "ping", "hello", :headers(%h);
+```
+
+Publishes a request and returns a Supply of response messages.
+A unique inbox is auto-generated for the reply subject.
+
+unsubscribe
+-----------
+
+```raku
+$nats.unsubscribe: $sub;
+$nats.unsubscribe: $sid, :max-messages(5);
+```
+
+Unsubscribes a subscription by object or SID.
+
+stream
+------
+
+```raku
+my $stream = $nats.stream: 'mystream', :subjects['foo.>'];
+```
+
+Creates a `Nats::Stream` object for JetStream operations.
+
+JetStream
+=========
+
+See `Nats::JetStream` for stream and consumer management.
+
+```raku
+use Nats::JetStream;
+
+my $js = Nats::JetStream.new: :$nats;
+$js.create-stream: 'mystream', :subjects['foo.>'];
+my $consumer = $js.create-consumer: 'mystream', 'myconsumer';
+
+react whenever $js.pull-consumer('mystream', 'myconsumer').msgs {
+    say .payload;
+    .ack;
+}
+```
 
 AUTHOR
 ======
 
 Fernando Corrêa de Oliveira <fco@cpan.org>
 
-COPYRIGHT AND LICENSE
-=====================
+LICENSE
+=======
 
-Copyright 2023 Fernando Corrêa de Oliveira
-
-This library is free software; you can redistribute it and/or modify it under the Artistic License 2.0.
-
+Artistic License 2.0.
