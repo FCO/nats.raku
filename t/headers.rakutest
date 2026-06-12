@@ -1,0 +1,57 @@
+#!/usr/bin/env raku
+
+use Test;
+use Test::Mock;
+
+use lib 'lib';
+
+use Nats;
+use Nats::Message;
+use Nats::Grammar;
+use Nats::Actions;
+
+use-ok 'Nats';
+
+my $printed-global;
+my $payload-global;
+
+# HPUB publish with headers should format sizes and block correctly
+{
+    my Supplier $supplier .= new;
+    my $printed;
+    my $conn         = mocked IO::Socket::Async, overriding => {
+        Supply => -> { $supplier.Supply },
+        print  => -> $s { $printed = $s },
+    };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+    my $nats = Nats.new: :$socket-class;
+    await $nats.start;
+
+    my %headers = Bar => 'Baz';
+    my $payload = 'Hello';
+
+    $nats.publish: 'foo', $payload, :headers(%headers);
+    $printed-global = $printed;
+    $payload-global = $payload;
+
+    ok $printed ~~ /^ 'HPUB ' /, 'printed HPUB control line';
+
+    # compute expected header block and sizes with same formatting
+    like $printed, /^ 'HPUB foo ' \d+ ' ' \d+ "\r\n" 'NATS/1.0' "\r\n" 'Bar: Baz' "\r\n\r\n" 'Hello' "\r\n" ("\r\n"?) $/, 'HPUB matches regex formatting';
+}
+
+# HMSG parsing should split headers and payload (via direct Message construction)
+{
+    my @lines = ('NATS/1.0', 'Bar: Baz');
+    my $headers-block = @lines.join("\r\n") ~ "\r\n\r\n";
+    my $msg = Nats::Message.new(
+        subject => 'foo',
+        sid     => 1,
+        payload => $headers-block ~ 'Hello',
+    );
+    isa-ok $msg, Nats::Message, 'constructed Nats::Message';
+    is-deeply $msg.headers<Bar>, ['Baz'], 'parsed header Bar: Baz';
+    is $msg.payload, 'Hello', 'parsed payload';
+}
+
+done-testing;

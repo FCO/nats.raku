@@ -1,0 +1,47 @@
+#!/usr/bin/env raku
+
+use Test;
+use Test::Mock;
+
+use lib 'lib';
+
+use Nats;
+use Nats::JetStream;
+
+use-ok 'Nats';
+
+# This test simulates producer and pull-consumer interaction.
+# It feeds a realistic sequence of frames into the mocked socket Supply
+# including partial chunks to exercise the input buffer reassembly.
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+    my $nats = Nats.new: :$socket-class;
+    await $nats.start;
+
+    # Prepare two MSG frames as NATS server would send to the consumer inbox
+    my $inbox = '_INBOX.pulltest________________________';
+    my $payload1 = 'msg 1';
+    my $payload2 = 'msg 2';
+    my $frame1 = "MSG $inbox 0 " ~ $payload1.chars ~ "\r\n$payload1\r\n";
+    my $frame2 = "MSG $inbox 0 " ~ $payload2.chars ~ "\r\n$payload2\r\n";
+
+    my @received;
+    $nats.supply.tap: -> $msg {
+        @received.push: $msg if $msg ~~ Nats::Message;
+    };
+
+    # Emit both frames
+    $supplier.emit: $frame1;
+    $supplier.emit: $frame2;
+
+    sleep 0.01;
+    is @received.elems, 2, 'consumer received two messages';
+    is @received[0].payload, $payload1, 'first payload intact';
+    is @received[1].payload, $payload2, 'second payload intact';
+}
+
+done-testing;

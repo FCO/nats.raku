@@ -2,10 +2,12 @@
 unit grammar Nats::Grammar;
 
 token subject {
-    [ \w+ ]+ %% '.'
+    # Allow standard NATS subject charset including '$' for JetStream ack subjects,
+    # alphanumerics, underscore, star and '>' for wildcards; literal '-' included.
+    [ <[ A..Z a..z 0..9 _ $ * > ]>+ '-'* ]+ %% '.'
 }
 token TOP {
-    <msg-option>+ %% \n
+    [<msg-option> \n*]+
 }
 token sid { \d+ }
 token size { \d+ }
@@ -13,7 +15,16 @@ token payload(UInt $size) {
     <(
         . ** { $size }
     )>
-    <?before \n [\n | $]>
+    <?before \n | $>
+    \n
+}
+token hsize { \d+ }
+token tsize { \d+ }
+token hpayload(UInt $hsize, UInt $tsize) {
+    <(
+        . ** { $tsize }
+    )>
+    <?before \n | $>
     \n
 }
 proto token msg-option           { * }
@@ -32,4 +43,16 @@ token msg-option:sym<MSG>  {
     <size>    \n
     {}
     <payload(+$<size>)>
+}
+token msg-option:sym<HMSG>  {
+    <.sym>    \s+
+    <subject> \s+
+    <sid>     \s+
+    [
+        <reply-to=.subject> \s+
+    ]??
+    <hsize>   \s+
+    <tsize>   \n
+    {}
+    <hpayload(+$<hsize>, +$<tsize>)>
 }

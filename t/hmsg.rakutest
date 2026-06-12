@@ -1,0 +1,47 @@
+#!/usr/bin/env raku
+
+use Test;
+use Test::Mock;
+
+use lib 'lib';
+
+use Nats;
+use Nats::Message;
+
+use-ok 'Nats';
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+    my $nats = Nats.new: :$socket-class;
+    await $nats.start;
+
+    my $subject = 'js.test';
+    my $sid     = 42;
+
+    # Build NATS headers block with body using \n line endings
+    my @lines = ('NATS/1.0', 'Content-Type: text/plain', 'X-Req: abc');
+    my $hdrs  = @lines.join("\n") ~ "\n\n";
+    my $body1 = 'hello';
+    my $body2 = 'world';
+    my $hsize = $hdrs.encode('utf8').bytes;
+    my $tsize1 = $hsize + $body1.encode('utf8').bytes;
+    my $tsize2 = $hsize + $body2.encode('utf8').bytes;
+
+    my $frame1 = "HMSG $subject $sid $hsize $tsize1\n$hdrs$body1\n";
+    my $frame2 = "HMSG $subject $sid $hsize $tsize2\n$hdrs$body2\n";
+
+    my @msgs;
+    $nats.supply.tap: -> $m { @msgs.push: $m if $m ~~ Nats::Message };
+
+    $supplier.emit: $frame1;
+    $supplier.emit: $frame2;
+
+    is @msgs.elems, 2, 'received two HMSG messages';
+    is @msgs[0].payload, $body1, 'first HMSG body extracted' if @msgs.elems == 2;
+    is @msgs[1].payload, $body2, 'second HMSG body extracted' if @msgs.elems == 2;
+}
+
+done-testing;
