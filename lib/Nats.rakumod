@@ -231,3 +231,155 @@ method !print(*@msg) {
     self!out(|@msg);
     (await $!conn ).print: "{ @msg.join: " " }\r\n";
 }
+
+=begin pod
+
+=head1 NAME
+
+Nats - client for NATS
+
+=head1 SYNOPSIS
+
+=begin code :lang<raku>
+use Nats;
+
+given Nats.new {
+    react whenever .start {
+        whenever .subscribe("bla.ble.bli").supply {
+            say "Received: { .payload }";
+        }
+    }
+}
+=end code
+
+=begin code :lang<raku>
+use Nats::Client;
+use Nats::Subscriptions;
+
+my $subscriptions = subscriptions {
+    subscribe -> "bla", $ble, "bli" {
+        say "payload: ", message.payload;
+        message.?reply-json: { :status<ok>, :$ble };
+    }
+}
+
+my $server = Nats::Client.new: :$subscriptions;
+$server.start;
+
+react whenever signal(SIGINT) { $server.stop; exit }
+=end code
+
+=head1 DESCRIPTION
+
+Nats is a Raku client for the NATS messaging system. It supports
+core NATS (PUB/SUB, request-reply) and JetStream persistent streams.
+
+=head1 METHODS
+
+=head2 new
+
+=begin code :lang<raku>
+my $nats = Nats.new: :servers[@urls];
+=end code
+
+Options:
+=item C<:servers> — array of NATS URLs (default: C<nats://127.0.0.1:4222>)
+=item Debug output: set the C<NATS_DEBUG> environment variable to enable
+
+=head2 start
+
+=begin code :lang<raku>
+await $nats.start;
+=end code
+
+Connects to the NATS server and begins processing messages.
+Returns a Promise kept on connection.
+
+=head2 publish
+
+=begin code :lang<raku>
+$nats.publish: $subject, $payload;
+$nats.publish: $subject, $payload, :reply-to($inbox);
+$nats.publish: $subject, $payload, :headers(%headers);
+$nats.publish: $subject, $payload, :ack, :msg-id($id), :timeout(10);
+=end code
+
+Publishes a message to a subject.
+
+Options:
+=item C<:reply-to> — reply subject for request-reply patterns
+=item C<:headers> — Hash of NATS headers (uses HPUB protocol)
+=item C<:ack> — enable JetStream publish-with-ack (returns C<Nats::Message> or Nil)
+=item C<:msg-id> — deduplication ID (requires :ack)
+=item C<:timeout> — ack timeout in seconds (default: 5)
+
+With C<:headers>, the method uses HPUB (headers publish) which correctly
+counts both header block size and total size in bytes for UTF-8 payloads.
+
+=head2 subscribe
+
+=begin code :lang<raku>
+my $sub = $nats.subscribe: "foo.>";
+my $sub = $nats.subscribe: "bar", :queue<workers>;
+my $sub = $nats.subscribe: "baz", :max-messages(10);
+=end code
+
+Creates a subscription. Returns a C<Nats::Subscription>.
+
+Options:
+=item C<:queue> — queue group name
+=item C<:max-messages> — auto-unsubscribe after N messages
+
+=head2 request
+
+=begin code :lang<raku>
+my $supply = $nats.request: "ping", "hello", :headers(%h);
+=end code
+
+Publishes a request and returns a Supply of response messages.
+A unique inbox is auto-generated for the reply subject.
+
+=head2 unsubscribe
+
+=begin code :lang<raku>
+$nats.unsubscribe: $sub;
+$nats.unsubscribe: $sid, :max-messages(5);
+=end code
+
+Unsubscribes a subscription by object or SID.
+
+=head2 stream
+
+=begin code :lang<raku>
+my $stream = $nats.stream: 'mystream', :subjects['foo.>'];
+=end code
+
+Creates a C<Nats::Stream> object for JetStream operations.
+
+=head1 JetStream
+
+See C<Nats::JetStream> for stream and consumer management.
+
+=begin code :lang<raku>
+use Nats::JetStream;
+
+my $stream = $nats.stream: 'mystream', :subjects['foo.>'];
+await $stream.create;
+my $consumer = $stream.consumer: 'myconsumer';
+await $consumer.create-named;
+
+react whenever $consumer.msgs(:batch, :no-wait) {
+    say .payload;
+    .ack if .^can('ack');
+}
+=end code
+
+=head1 AUTHOR
+
+Fernando Corrêa de Oliveira <fco@cpan.org>
+
+=head1 LICENSE
+
+Artistic License 2.0.
+
+=end pod
