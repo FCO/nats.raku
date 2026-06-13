@@ -3,8 +3,9 @@ unit grammar Nats::Grammar;
 
 token subject {
     # Allow standard NATS subject charset including '$' for JetStream ack subjects,
-    # alphanumerics, underscore, star and '>' for wildcards; literal '-' included.
-    [ <[ A..Z a..z 0..9 _ $ * > ]>+ '-'* ]+ %% '.'
+    # alphanumerics, underscore, star and '>' for wildcards.
+    # Hyphens are allowed BETWEEN alphanumeric groups (not at start/end).
+    [ <[ A..Z a..z 0..9 _ $ * > ]>+ [ '-' <[ A..Z a..z 0..9 _ $ * > ]>+ ]* ]+ % '.'
 }
 token TOP {
     [<msg-option> \n*]+

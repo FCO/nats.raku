@@ -1,0 +1,53 @@
+#!/usr/bin/env raku
+# Test suite for Nats::Grammar subject token
+# Verifies fix for hyphen-in-subject bug
+
+my $subject-token = rx/^ [ <[ A..Z a..z 0..9 _ $ * > ]>+ [ '-' <[ A..Z a..z 0..9 _ $ * > ]>+ ]* ]+ % '.' $/;
+
+my $passed = 0;
+my $failed = 0;
+
+sub test(Str $subject, Bool $should-match, Str $why = '') {
+    my $m = so $subject ~~ $subject-token;
+    if $m == $should-match {
+        $passed++;
+        say "✓ {$subject}";
+    } else {
+        $failed++;
+        my $expected = $should-match ?? 'MATCH' !! 'FAIL';
+        my $got      = $m ?? 'MATCH' !! 'FAIL';
+        say "✗ {$subject} — expected {$expected}, got {$got}  {$why}";
+    }
+}
+
+say "=== Should MATCH (valid NATS subjects) ===";
+test('worker.code-reader.task', True, 'hyphens in the middle of tokens');
+test('worker.code_reader.task', True, 'underscores');
+test('model.deepseek.completion', True, 'standard dotted');
+test('_INBOX.abc.def', True, 'inbox subjects');
+test('simple', True, 'single token');
+test('x.y.z', True, 'three tokens');
+test('a-b', True, 'hyphenated single token');
+test('foo-bar-baz.qux', True, 'multiple hyphens in one token');
+test('*.>', True, 'wildcards');
+test('foo.*', True, 'star wildcard');
+test('$SYS.REQ.ACCOUNT.*.*', True, 'JetStream system subjects');
+test('_INBOX.abc.def-ghi', True, 'inbox with hyphenated suffix');
+
+say "";
+say "=== Should FAIL (invalid NATS subjects) ===";
+test('-test', False, 'hyphen at start');
+test('test-', False, 'trailing hyphen');
+test('test..foo', False, 'empty token between dots');
+test('.foo', False, 'leading dot');
+test('foo.', False, 'trailing dot');
+test('', False, 'empty string');
+test('-', False, 'just a hyphen');
+test('foo--bar', False, 'double hyphen');
+test('foo bar', False, 'space in subject');
+test('test..', False, 'double trailing dot');
+
+say "";
+say "═══════════════════════";
+say "{$passed} passed, {$failed} failed";
+exit $failed > 0 ?? 1 !! 0;
