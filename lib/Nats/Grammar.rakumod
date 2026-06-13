@@ -13,7 +13,10 @@ token sid { \d+ }
 token size { \d+ }
 token payload(UInt $size) {
     <(
-        . ** { $size }
+        # $size is BYTES from NATS wire protocol. . ** {$size} matches
+        # CHARACTERS which fails for multi-byte UTF-8 (Olá: 3 chars ≠ 4 bytes).
+        # Match characters until their UTF-8 encoded byte count equals $size.
+        .+? <?{ $/.Str.encode('utf8').bytes == $size }>
     )>
     <?before \n | $>
     \n
@@ -22,7 +25,8 @@ token hsize { \d+ }
 token tsize { \d+ }
 token hpayload(UInt $hsize, UInt $tsize) {
     <(
-        . ** { $tsize }
+        # $tsize is BYTES; match characters until byte count matches
+        .+? <?{ $/.Str.encode('utf8').bytes == $tsize }>
     )>
     <?before \n | $>
     \n

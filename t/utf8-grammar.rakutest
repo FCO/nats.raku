@@ -1,0 +1,159 @@
+#!/usr/bin/env raku
+
+use Test;
+use Test::Mock;
+
+use lib 'lib';
+
+use Nats;
+use Nats::Grammar;
+use Nats::Message;
+
+use-ok 'Nats';
+
+# Helper: build MSG wire string with correct byte count
+sub msg-wire(Str $subject, UInt $sid, Str $payload --> Str) {
+    my $bytes = $payload.encode('utf8').bytes;
+    "MSG $subject $sid $bytes\r\n$payload\r\n"
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Test 1: Grammar parses MSG with multi-byte UTF-8 payloads
+# ═══════════════════════════════════════════════════════════════════
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+    my $nats         = Nats.new: :$socket-class;
+    await $nats.start;
+
+    my @cases = (
+        { label => 'Olá (4 bytes, 3 chars)',   payload => 'Olá' },
+        { label => 'coração (9 bytes, 7 chars)', payload => 'coração' },
+        { label => 'emoji (multi-byte)',         payload => '✅ ❌ 🚀' },
+        { label => 'JSON with accents',          payload => '{"msg":"Não há dados"}' },
+        { label => 'German umlauts',             payload => 'München über Köln' },
+        { label => 'Mixed ASCII+UTF8',           payload => 'Olá mundo!' },
+    );
+
+    for @cases {
+        my ($label, $payload) = $_<label>, $_<payload>;
+        my $wire = msg-wire('a', 1, $payload);
+        my $match = Nats::Grammar.parse($wire, :actions(Nats::Actions.new: :$nats));
+        ok $match, "$label — parsed";
+        if $match {
+            my @cmds = $match.ast;
+            is +@cmds, 1, "$label — 1 command";
+            my $msg = @cmds[0];
+            isa-ok $msg, Nats::Message, "$label — Nats::Message";
+            is $msg.payload, $payload, "$label — payload round-trip";
+        }
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Test 2: Split-frame with multi-byte payload (buffer reassembly)
+# ═══════════════════════════════════════════════════════════════════
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+    my $nats = Nats.new: :$socket-class;
+    await $nats.start;
+
+    my @msgs;
+    $nats.supply.tap: -> $m { @msgs.push: $m if $m ~~ Nats::Message };
+
+    # Split: "MSG sub 1 4\r\nOl" + "á\r\n"
+    $supplier.emit: "MSG sub 1 4\r\nOl";
+    $supplier.emit: "á\r\n";
+    sleep 0.02;
+
+    is @msgs.elems, 1, 'split UTF-8 MSG — 1 message';
+    if @msgs {
+        is @msgs[0].subject, 'sub', 'split UTF-8 MSG — subject';
+        is @msgs[0].payload, 'Olá', 'split UTF-8 MSG — payload reconstructed';
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Test 3: Multiple MSG frames with mixed payloads in one chunk
+# ═══════════════════════════════════════════════════════════════════
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+    my $nats = Nats.new: :$socket-class;
+    await $nats.start;
+
+    my @msgs;
+    $nats.supply.tap: -> $m { @msgs.push: $m if $m ~~ Nats::Message };
+
+    my $chunk = msg-wire('x', 1, 'Hello')
+              ~ msg-wire('y', 2, 'Olá')
+              ~ msg-wire('z', 3, 'coração');
+    $supplier.emit: $chunk;
+    sleep 0.02;
+
+    is @msgs.elems, 3, 'mixed payloads — 3 messages';
+    if @msgs.elems >= 3 {
+        is @msgs[0].payload, 'Hello',   'mixed — ASCII payload';
+        is @msgs[1].payload, 'Olá',     'mixed — UTF-8 4b payload';
+        is @msgs[2].payload, 'coração', 'mixed — UTF-8 9b payload';
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Test 4: Publish wire format uses byte count (regression from PR #2)
+# ═══════════════════════════════════════════════════════════════════
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+    my $nats = Nats.new: :$socket-class;
+    $nats.start;
+
+    $nats.publish: "foo", "hello";
+    $nats.publish: "bar", "coração";
+    $nats.publish: "baz", "á";
+    $nats.publish: "qux", "Olap";
+
+    $nats.stop;
+
+    check-mock $conn,
+        *.called("print", :once, with => :("PUB foo 5\r\nhello\r\n")),
+        *.called("print", :once, with => :("PUB bar 9\r\ncoração\r\n")),
+        *.called("print", :once, with => :("PUB baz 2\r\ná\r\n")),
+        *.called("print", :once, with => :("PUB qux 4\r\nOlap\r\n")),
+    ;
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Test 5: HPUB (headers) with multi-byte payload
+# ═══════════════════════════════════════════════════════════════════
+
+{
+    my Supplier $supplier .= new;
+    my $conn         = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $socket-class = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+
+    my $nats = Nats.new: :$socket-class;
+    $nats.start;
+
+    $nats.publish: "hdr", "café", :header({ :Content-Type<text/plain> });
+    $nats.stop;
+
+    # Verify wire format: byte counts must be for UTF-8 encoding
+    # "café" = 4 chars, 5 bytes (é=2)
+    # Just verify it was called and doesn't crash
+    check-mock $conn, *.called("print", :once);
+}
+
+done-testing;
