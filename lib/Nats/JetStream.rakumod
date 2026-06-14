@@ -17,7 +17,7 @@ constant STREAM-PURGE       = JS-API ~ '.STREAM.PURGE.%s';
 
 # Direct Message Subjects
 constant DIRECT-GET         = JS-API ~ '.DIRECT.GET.%s';
-constant DIRECT-GET-LAST    = JS-API ~ '.DIRECT.GET.%s.%s';
+constant DIRECT-GET-LAST    = JS-API ~ '.DIRECT.GET.%s';
 
 # Consumer Subjects
 constant CONSUMER-CREATE   = JS-API ~ '.CONSUMER.CREATE.%s.%s';
@@ -33,6 +33,7 @@ sub to-map($obj, *%pars --> Map()) {
         next if %pars{$name}:e && !%pars{$name};
         my $val = $attr.get_value: $obj;
         next unless $val.defined && $val ~~ Str | Int | Positional | Associative;
+        next if $val ~~ Bool && !$val;       # skip False booleans (defaults)
         next if $val ~~ Associative && $val.elems == 0;
         next if $val ~~ Positional && $val.elems == 0;
         $name => $val
@@ -75,6 +76,7 @@ class Nats::Stream {
     has Int() $.num-replicas    = 1;
     has Int() $.duplicate-window;
     has Bool() $.no-ack         = False;
+    has Bool() $.allow-direct   = False;
     has Str() $.template-owner;
     has Str() $.compression     = 'none';
     has UInt() $.first-seq;
@@ -94,17 +96,15 @@ class Nats::Stream {
     method purge   { $!nats.request: $.subject(STREAM-PURGE, $!name)  }
 
     # Direct message get by sequence number
-    method get-msg(UInt $seq, Str :$subject) {
-        my $api-subject = $subject
-            ?? sprintf(DIRECT-GET-LAST, $!name, $subject)
-            !! sprintf(DIRECT-GET, $!name);
-        my %payload = :last_by_subj($seq);
+    method get-msg(UInt $seq) {
+        my $api-subject = sprintf(DIRECT-GET, $!name);
+        my %payload = :last_by_seq($seq);
         $!nats.request: $api-subject, to-json %payload
     }
 
     # Direct get last message for a subject
     method get-last-msg(Str $subject) {
-        $!nats.request: sprintf(DIRECT-GET-LAST, $!name, $subject), to-json { :last_by_subj($subject) }
+        $!nats.request: sprintf(DIRECT-GET-LAST, $!name), to-json { :last_by_subj($subject) }
     }
 
     method consumer(Str $name, |c) {

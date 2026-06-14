@@ -1,0 +1,55 @@
+#!/usr/bin/env raku
+use Nats::JetStream;
+use Nats;
+use Test::Mock;
+use JSON::Fast;
+
+my $pass = 0;
+my $fail = 0;
+
+# TEST 1: get-last-msg body-only (no subject in path)
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            if $subject ne q⌁$JS.API.DIRECT.GET.MY⌁ {
+                $fail++; note "❌ get-last-msg subject: got {$subject}";
+            } else {
+                $pass++; note "✅ get-last-msg body-only format";
+            }
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => "MY").get-last-msg("foo");
+}
+
+# TEST 2: allow-direct present when True
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            my %cfg = from-json($payload);
+            if %cfg<allow_direct>:!exists || %cfg<allow_direct> !== True {
+                $fail++; note "❌ allow-direct: exists={%cfg<allow_direct>:exists}, val={%cfg<allow_direct>}";
+            } else {
+                $pass++; note "✅ allow-direct present and True";
+            }
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => "MY", :allow-direct, subjects => ["foo"]).create;
+}
+
+# TEST 3: allow-direct omitted when False (default)
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            my %cfg = from-json($payload);
+            if %cfg<allow_direct>:exists {
+                $fail++; note "❌ allow-direct should be omitted when False";
+            } else {
+                $pass++; note "✅ allow-direct omitted (default False)";
+            }
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => "MY", subjects => ["foo"]).create;
+}
+
+note "\n{$pass} passed, {$fail} failed";
+exit $fail ?? 1 !! 0;
