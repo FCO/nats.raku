@@ -1,0 +1,98 @@
+#!/usr/bin/env raku
+# ═══════════════════════════════════════════════════════════
+# TDD: Style Violations — nats.raku + Camélia
+#
+# Each test: False = should have 0 violations (clean = GREEN)
+# ═══════════════════════════════════════════════════════════
+
+use Test;
+
+plan 9;
+
+my $CAME = '/root/camelia';
+my $NATS = '/root/forks/nats.raku';
+
+sub scan-files(@dirs, Str $glob, &test) {
+    my @found;
+    for @dirs -> $dir {
+        for qqx{find $dir -name '$glob' -type f 2>/dev/null}.lines -> $f {
+            next if $f.contains('.precomp') || $f.contains('/tmp/') 
+                 || $f.contains('/lib/nats.raku-tmp/') || $f.contains('SKILL.md');
+            my $lineno = 0;
+            for $f.IO.lines -> $line {
+                $lineno++;
+                if test($line) {
+                    @found.push: "$f:$lineno: " ~ $line.trim;
+                }
+            }
+        }
+    }
+    @found
+}
+
+sub violation(Str $name, @found) {
+    ok +@found == 0, "$name — {+@found} violations";
+    diag "  $_" for @found.head(5);
+}
+
+# ═══ 1: ^can guard-then-call in Ackable ═══
+violation '^can guard (return unless .^can...)', scan-files(
+    ["$NATS/lib", $CAME], '*.rakumod',
+    -> $line { $line ~~ /'return unless' .* '\^can'/ }
+);
+
+# ═══ 2: Fat arrow in Raku hashes ═══
+violation 'fat arrow in Raku hashes', scan-files(
+    ["$CAME/containers", "$CAME/scripts"], '*.raku',
+    -> $line {
+        $line ~~ /^\s+ (model|messages|headers|content|run_shell|read_file|write_file|temperature) \s* '=>'/
+    }
+);
+
+# ═══ 3: .head(1) when .head defaults to 1 ═══
+violation '.head(1) → .head', scan-files(
+    ["$CAME/scripts"], '*.raku',
+    -> $line { $line ~~ /'.head(1)'/ }
+);
+
+# ═══ 4: to-json(%var) extra parens ═══
+violation 'to-json(%var) parens', scan-files(
+    ["$CAME/containers", "$CAME/scripts"], '*.raku',
+    -> $line {
+        $line ~~ /'to-json($'/ && $line !~~ /'to-json({'/ 
+    }
+);
+
+# ═══ 5: .? functional equivalence ═══
+{
+    class NoReply { has $.nats }
+    nok NoReply.new.?reply-to, '.? on missing method returns Nil';
+    lives-ok { NoReply.new.?reply-to }, '.? does not throw';
+}
+
+# ═══ 6: Colon pair ≡ fat arrow ═══
+{
+    my $model = 'deepseek-v4-pro';
+    my $temp  = 0.1;
+    is-deeply 
+        %( model => $model, temperature => $temp, :messages([:role<user>, :content<hi>]) ),
+        %( :$model, :temperature($temp), :messages([:role<user>, :content<hi>]) ),
+        'Colon pair ≡ fat arrow hash';
+}
+
+# ═══ 7: Ackable .? with Nats::Message ═══
+{
+    use lib "$NATS/lib";
+    use Test::Mock;
+    use Nats::Message;
+    use Nats;
+
+    my $nats = mocked Nats;
+    my $msg = Nats::Message.new(
+        :subject<test>, :sid(1), :payload<hi>,
+        :reply-to('_INBOX.abc'), :$nats,
+    );
+    lives-ok { $msg.?ack }, '.?ack does not throw on Nats::Message';
+}
+
+done-testing;

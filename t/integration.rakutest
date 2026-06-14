@@ -1,0 +1,364 @@
+#!/usr/bin/env raku
+# ═══════════════════════════════════════════════════════════════
+# nats.raku — Integration Tests
+#
+# Tests against a LIVE NATS server at NATS_URL (default: 172.17.0.3:4222)
+# Run: raku -Ilib t/integration.rakutest
+# ═══════════════════════════════════════════════════════════════
+
+use Test;
+use Nats;
+use Nats::JetStream;
+use Nats::Message;
+use JSON::Fast;
+
+$*ERR.out-buffer = False;
+
+my $NATS-URL = %*ENV<NATS_URL> // 'nats://172.17.0.3:4222';
+
+sub connect-nats(--> Nats) {
+    my $nats = Nats.new: :servers[$NATS-URL];
+    await $nats.start;
+    $nats.connect;
+    $nats
+}
+
+# ═══════════════════════════════════════════
+# SECTION 1: Basic PUB/SUB
+# ═══════════════════════════════════════════
+
+subtest 'PUB/SUB round-trip' => {
+    plan 3;
+    my $nats = connect-nats();
+    my $received = Promise.new;
+    my $captured;
+
+    my $sub = $nats.subscribe: 'int.pubsub.test';
+    $sub.supply.tap: -> $msg {
+        $captured = $msg;
+        $received.keep(True);
+    }
+
+    $nats.publish: 'int.pubsub.test', 'hello integration';
+    await Promise.anyof: $received, Promise.in(5);
+
+    ok $received.so, 'Message received within 5s';
+    isa-ok $captured, Nats::Message, 'Received a Nats::Message';
+    is $captured.payload, 'hello integration', 'Correct payload';
+    $nats.stop;
+}
+
+subtest 'Multi-message PUB/SUB' => {
+    plan 3;
+    my $nats = connect-nats();
+    my @received;
+
+    my $sub = $nats.subscribe: 'int.multi.test';
+    $sub.supply.tap: -> $msg { @received.push: $msg };
+
+    $nats.publish: 'int.multi.test', "msg-1";
+    $nats.publish: 'int.multi.test', "msg-2";
+    $nats.publish: 'int.multi.test', "msg-3";
+
+    sleep 0.5;
+
+    is +@received, 3, 'Received 3 messages';
+    is @received[0].payload, 'msg-1', 'First message correct';
+    is @received[2].payload, 'msg-3', 'Third message correct';
+    $nats.stop;
+}
+
+subtest 'Queue group load balancing' => {
+    plan 2;
+    my $nats = connect-nats();
+    my $got1 = 0; my $got2 = 0;
+
+    my $sub1 = $nats.subscribe: 'int.queue.test', :queue<workers>;
+    my $sub2 = $nats.subscribe: 'int.queue.test', :queue<workers>;
+    $sub1.supply.tap: -> $m { $got1++ };
+    $sub2.supply.tap: -> $m { $got2++ };
+
+    for ^6 { $nats.publish: 'int.queue.test', "msg-$_" }
+    sleep 0.5;
+
+    is $got1 + $got2, 6, 'All 6 messages delivered';
+    ok $got1 > 0 && $got2 > 0, 'Both queue members received messages';
+    $nats.stop;
+}
+
+# ═══════════════════════════════════════════
+# SECTION 2: Request-Reply
+# ═══════════════════════════════════════════
+
+subtest 'Request-Reply basic' => {
+    plan 3;
+    my $nats = connect-nats();
+
+    # Responder: subscribes and replies
+    my $responder = $nats.subscribe: 'int.echo.service';
+    $responder.supply.tap: -> $msg {
+        $nats.publish: $msg.reply-to, "echo: {$msg.payload}" if $msg.?reply-to;
+    }
+
+    # Requester: uses request()
+    my $supply = $nats.request: 'int.echo.service', 'bonjour', :timeout(5);
+    my $response = await $supply.Promise;
+
+    ok $response.defined, 'Response received';
+    isa-ok $response, Nats::Message, 'Response is Nats::Message';
+    is $response.payload, 'echo: bonjour', 'Correct echo response';
+    $nats.stop;
+}
+
+subtest 'Request-Reply timeout (no responder)' => {
+    plan 2;
+    my $nats = connect-nats();
+
+    my $start = now;
+    my $supply = $nats.request: 'int.no.such.service', 'ping', :timeout(2);
+    my $response = await $supply.Promise;
+    my $elapsed = now - $start;
+
+    nok $response.defined, 'No response for non-existent service';
+    ok $elapsed < 4, "Timeout completed within 4s (actual: {$elapsed.fmt('%.1f')}s)";
+    $nats.stop;
+}
+
+subtest 'Request-Reply with headers' => {
+    plan 2;
+    my $nats = connect-nats();
+
+    my $responder = $nats.subscribe: 'int.header.service';
+    $responder.supply.tap: -> $msg {
+        if $msg.?reply-to {
+            $nats.publish: $msg.reply-to, 'ok', :headers({ :X-Request-Id<abc123> });
+        }
+    }
+
+    my $supply = $nats.request: 'int.header.service', 'ping', :timeout(5);
+    my $response = await $supply.Promise;
+
+    ok $response.defined, 'Response with headers received';
+    # Headers are parsed by Nats::Message TWEAK from HPUB format
+    ok ($response.headers<X-Request-Id> // []).join(',') ~~ /abc123/,
+       'Header X-Request-Id present';
+    $nats.stop;
+}
+
+# ═══════════════════════════════════════════
+# SECTION 3: JetStream Stream Management
+# ═══════════════════════════════════════════
+
+subtest 'JetStream: Stream create + info + delete' => {
+    plan 4;
+    my $nats = connect-nats();
+
+    my $stream = Nats::Stream.new:
+        :$nats,
+        :name<INT_TEST_STREAM>,
+        :subjects(['int.js.test.>']),
+        :retention<limits>,
+        ;
+
+    # Create
+    my $create-msg = await $stream.create.Promise;
+    ok $create-msg && $create-msg.payload, 'Stream create returned response';
+    ok $create-msg.payload.contains('stream_create_response'),
+       'Response contains stream_create_response';
+
+    # Info
+    my $info-msg = await $stream.info.Promise;
+    ok $info-msg && $info-msg.payload.contains('INT_TEST_STREAM'),
+       'Stream info contains stream name';
+
+    # Delete
+    my $delete-msg = await $stream.delete.Promise;
+    ok $delete-msg.defined, 'Stream deleted';
+    $nats.stop;
+}
+
+subtest 'JetStream: Publish + Direct Get' => {
+    plan 3;
+    my $nats = connect-nats();
+
+    # Create stream with allow-direct
+    my $stream = Nats::Stream.new:
+        :$nats,
+        :name<INT_DIRECT_TEST>,
+        :subjects(['int.direct.test.>']),
+        :allow-direct,
+        ;
+
+    await $stream.create.Promise;
+
+    # Publish to the stream's subject
+    $nats.publish: 'int.direct.test.msg1', 'direct payload 1';
+    $nats.publish: 'int.direct.test.msg1', 'direct payload 2';  # overwrites (seq 2)
+    sleep 0.3;  # allow propagation
+
+    # Direct get last message for subject
+    my $get-msg = await $stream.get-last-msg('int.direct.test.msg1').Promise;
+    ok $get-msg && $get-msg.payload, 'Direct get returned message';
+    ok $get-msg.payload.contains('direct payload 2'),
+       'Latest message content matches';
+
+    # Cleanup
+    await $stream.delete.Promise;
+    ok True, 'Cleanup completed';
+    $nats.stop;
+}
+
+subtest 'JetStream: Pull Consumer' => {
+    plan 3;
+    my $nats = connect-nats();
+
+    # Create stream
+    my $stream = Nats::Stream.new:
+        :$nats,
+        :name<INT_PULL_STREAM>,
+        :subjects(['int.pull.>']),
+        ;
+
+    await $stream.create.Promise;
+
+    # Create consumer
+    my $consumer = Nats::Consumer.new:
+        :$nats,
+        :name<int-pull-consumer>,
+        :stream<INT_PULL_STREAM>,
+        :ack-policy<explicit>,
+        :filter-subject('int.pull.>'),
+        :max-ack-pending(10),
+        :ack-wait(30),
+        ;
+
+    my $create-resp = await $consumer.create-named.Promise;
+    ok $create-resp.defined, 'Consumer created';
+
+    # Publish some messages
+    $nats.publish: 'int.pull.task.1', to-json({ :task<one>, :value(1) });
+    $nats.publish: 'int.pull.task.2', to-json({ :task<two>, :value(2) });
+    sleep 0.3;
+
+    # Pull messages
+    my $msg-count = 0;
+    my $pull-done = Promise.new;
+
+    start {
+        react {
+            whenever $consumer.msgs(:expires(60), :batch(10)) -> $msg {
+                next unless $msg.payload;
+                last if $msg.payload.starts-with('-ERR');
+                $msg-count++;
+                $consumer.ack($msg);
+                $pull-done.keep(True) if $msg-count >= 2;
+            }
+        }
+    }
+
+    await Promise.anyof: $pull-done, Promise.in(10);
+    ok $msg-count >= 2, "Pulled {$msg-count}/2 messages";
+
+    # Cleanup
+    await $consumer.delete.Promise;
+    await $stream.delete.Promise;
+    ok True, 'Consumer and stream deleted';
+    $nats.stop;
+}
+
+# ═══════════════════════════════════════════
+# SECTION 4: Edge Cases
+# ═══════════════════════════════════════════
+
+subtest 'UTF-8 payload round-trip' => {
+    plan 2;
+    my $nats = connect-nats();
+    my $received = Promise.new;
+    my $captured;
+
+    my $sub = $nats.subscribe: 'int.utf8.test';
+    $sub.supply.tap: -> $msg {
+        $captured = $msg;
+        $received.keep(True);
+    }
+
+    my $payload = 'coração ✅ 日本語 привет';
+    $nats.publish: 'int.utf8.test', $payload;
+    await Promise.anyof: $received, Promise.in(5);
+
+    ok $received.so, 'UTF-8 payload received';
+    is $captured.payload, $payload,
+       "UTF-8 round-trip preserved: '{$payload}' (bytes: {$payload.encode('utf8').bytes})";
+    $nats.stop;
+}
+
+subtest 'Large payload' => {
+    plan 2;
+    my $nats = connect-nats();
+    my $received = Promise.new;
+    my $captured;
+
+    my $sub = $nats.subscribe: 'int.large.test';
+    $sub.supply.tap: -> $msg {
+        $captured = $msg;
+        $received.keep(True);
+    }
+
+    my $payload = ('x' x 1024) ~ "\n" ~ ('y' x 1024);  # ~2KB
+    $nats.publish: 'int.large.test', $payload;
+    await Promise.anyof: $received, Promise.in(5);
+
+    ok $received.so, 'Large payload received';
+    is $captured.payload.chars, $payload.chars, "Large payload preserved ({$payload.chars} chars)";
+    $nats.stop;
+}
+
+subtest 'Concurrent subscribers' => {
+    plan 2;
+    my $nats = connect-nats();
+    my $count = 0;
+    my $all-done = Promise.new;
+
+    # 5 subscribers, each increments counter
+    my @subs;
+    for ^5 -> $i {
+        my $sub = $nats.subscribe: 'int.concurrent.test';
+        $sub.supply.tap: -> $msg {
+            $count++;
+            $all-done.keep(True) if $count >= 5;
+        }
+        @subs.push: $sub;
+    }
+
+    $nats.publish: 'int.concurrent.test', 'broadcast';
+    await Promise.anyof: $all-done, Promise.in(5);
+
+    is $count, 5, 'All 5 subscribers received the broadcast';
+    ok $count == 5, 'Broadcast delivery confirmed';
+    $nats.stop;
+}
+
+subtest 'Subject wildcards' => {
+    plan 3;
+    my $nats = connect-nats();
+    my @msgs;
+
+    my $sub1 = $nats.subscribe: 'int.wild.>';    # matches all below int.wild
+    my $sub2 = $nats.subscribe: 'int.wild.*.baz'; # matches int.wild.<one>.baz
+    $sub1.supply.tap: -> $m { @msgs.push: 's1:' ~ $m.subject };
+    $sub2.supply.tap: -> $m { @msgs.push: 's2:' ~ $m.subject };
+
+    $nats.publish: 'int.wild.foo', 'a';
+    $nats.publish: 'int.wild.bar.baz', 'b';
+    $nats.publish: 'int.wild.qux.baz', 'c';
+    sleep 0.3;
+
+    my @s1 = @msgs.grep: /^'s1:'/;
+    my @s2 = @msgs.grep: /^'s2:'/;
+    is +@s1, 3, 'Wildcard > received all 3 messages';
+    is +@s2, 2, 'Wildcard * received 2 messages (bar.baz, qux.baz)';
+    ok @s2.grep(/bar/), 'Received bar.baz';
+    $nats.stop;
+}
+
+done-testing;
