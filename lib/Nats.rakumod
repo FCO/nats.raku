@@ -131,14 +131,35 @@ method !gen-inbox {
      Str() $payload?,
      Str   :$reply-to     = self!gen-inbox,
      UInt  :$max-messages = 1,
-     :headers(%headers),
+           :headers(%headers),
+     UInt  :$timeout,
  ) {
      my $sub = self.subscribe: $reply-to, |($max-messages ?? :$max-messages !! Empty);
      return $sub.supply unless $max-messages;
-     my $p = $sub.supply.head($max-messages);
+     my $head-supply = $sub.supply.head($max-messages);
      self.publish: $subject, |(.Str with $payload), :$reply-to,
          |( %headers.elems ?? :headers(%headers) !! Empty );
-     $p
+     without $timeout {
+         return $head-supply;
+     }
+     # Race response against timeout — let head supply drive completion
+     # for multi-message support. Timeout unsubscribes so the head supply
+     # completes naturally with whatever messages arrived.
+     supply {
+         my $timeout-fired = False;
+         whenever $head-supply -> $msg {
+             emit $msg;
+             LAST {
+                 done unless $timeout-fired;
+                 $timeout-fired = True;
+             }
+         }
+         whenever Promise.in($timeout) {
+             $sub.unsubscribe;
+             done unless $timeout-fired;
+             $timeout-fired = True;
+         }
+     }
  }
 
 multi method unsubscribe(Nats::Subscription $sub, UInt :$max-messages) {
@@ -334,10 +355,16 @@ Options:
 
 =begin code :lang<raku>
 my $supply = $nats.request: "ping", "hello", :headers(%h);
+my $supply = $nats.request: "ping", "hello", :timeout(5);
 =end code
 
 Publishes a request and returns a Supply of response messages.
 A unique inbox is auto-generated for the reply subject.
+
+Options:
+=item C<:headers> — Hash of NATS headers
+=item C<:max-messages> — maximum responses to collect (default: 1)
+=item C<:timeout> — seconds to wait before auto-unsubscribing if no response arrives
 
 =head2 unsubscribe
 
@@ -370,7 +397,7 @@ await $consumer.create-named;
 
 react whenever $consumer.msgs(:batch, :no-wait) {
     say .payload;
-    .ack if .^can('ack');
+    .?ack;
 }
 =end code
 

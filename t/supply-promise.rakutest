@@ -1,0 +1,65 @@
+#!/usr/bin/env raku
+# Verify Supply.Promise behavior (multiple values + head)
+use Test;
+plan 4;
+
+# Test 1: Multiple values — what does .Promise resolve to?
+{
+    my Supplier $s .= new;
+    my $supply = $s.Supply;
+    my $promise = $supply.Promise;
+    $s.emit("first");
+    $s.emit("second");
+    $s.done;
+    my $result = await $promise;
+    note "Multi-value Supply.Promise result: {$result.raku}";
+    # Actually it's the done value, but wait...
+    ok $result.defined, 'Supply.Promise resolves to something';
+}
+
+# Test 2: head(1) with one value
+{
+    my Supplier $s .= new;
+    my $h = $s.Supply.head(1);
+    my $p = $h.Promise;
+    $s.emit("only");
+    my $result = await $p;
+    is $result, 'only', 'head(1).Promise captures the SINGLE value';
+}
+
+# Test 3: head(2) with two values
+{
+    my Supplier $s .= new;
+    my $h = $s.Supply.head(2);
+    my $p = $h.Promise;
+    $s.emit("one");
+    $s.emit("two");
+    my $result = await $p;
+    note "head(2).Promise result: {$result.raku}";
+    ok $result.defined, 'head(2).Promise resolves';
+}
+
+# Test 4: head(1) from NATS-like flow  
+{
+    use lib 'lib';
+    use Test::Mock;
+    use Nats;
+    use Nats::Message;
+
+    my Supplier $supplier .= new;
+    my $conn = mocked IO::Socket::Async, returning => { Supply => $supplier.Supply };
+    my $sc   = mocked IO::Socket::Async, returning => { connect => Promise.kept: $conn };
+    my $nats = Nats.new: :socket-class($sc);
+    await $nats.start;
+
+    my $sub = $nats.subscribe: "_INBOX.test";
+    my $h = $sub.supply.head(1);
+    my $p = $h.Promise;
+
+    # Emit a valid MSG frame
+    $supplier.emit: "MSG _INBOX.test {$sub.sid} 5\r\nhello\r\n";
+    my $result = await $p;
+    isa-ok $result, Nats::Message, 'head(1).Promise in NATS pipe returns Nats::Message';
+}
+
+done-testing;
