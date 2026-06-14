@@ -372,15 +372,43 @@ use-ok 'Nats::JetStream';
 }
 
 # Stream direct get last per subject
+# Uses body-only format: $JS.API.DIRECT.GET.<stream> with last_by_subj in payload
+# (subject in path + body = 408 Bad Request in NATS v2.14+)
 {
     my $nats = mocked Nats, overriding => {
         request => -> $subject, $payload {
-            is $subject, '$JS.API.DIRECT.GET.MY.foo', 'direct get last subject';
+            is $subject, '$JS.API.DIRECT.GET.MY', 'direct get last — body-only, no subject in path';
             my %p = from-json($payload);
-            is %p<last_by_subj>, 'foo', 'subject in payload';
+            is %p<last_by_subj>, 'foo', 'subject in payload via last_by_subj';
         }
     };
     Nats::Stream.new(:nats($nats), name => 'MY').get-last-msg('foo');
+    check-mock $nats, *.called('request', :once);
+}
+
+# Stream with allow-direct enabled
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            is $subject, '$JS.API.STREAM.CREATE.MY', 'stream create with allow-direct';
+            my %cfg = from-json($payload);
+            ok %cfg<allow_direct>:exists, 'allow_direct present in config';
+            is %cfg<allow_direct>, True, 'allow_direct is True';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY', :allow-direct, subjects => ['foo']).create;
+    check-mock $nats, *.called('request', :once);
+}
+
+# Stream without allow-direct (default false, attribute omitted from config)
+{
+    my $nats = mocked Nats, overriding => {
+        request => -> $subject, $payload {
+            my %cfg = from-json($payload);
+            nok %cfg<allow_direct>:exists, 'allow_direct omitted when False (default)';
+        }
+    };
+    Nats::Stream.new(:nats($nats), name => 'MY', subjects => ['foo']).create;
     check-mock $nats, *.called('request', :once);
 }
 
