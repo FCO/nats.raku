@@ -96,11 +96,9 @@ class Nats::Stream {
     method purge   { $!nats.request: $.subject(STREAM-PURGE, $!name)  }
 
     # Direct message get by sequence number
-    method get-msg(UInt $seq, Str :$subject) {
-        my $api-subject = $subject
-            ?? sprintf(DIRECT-GET-LAST, $!name, $subject)
-            !! sprintf(DIRECT-GET, $!name);
-        my %payload = :last_by_subj($seq);
+    method get-msg(UInt $seq) {
+        my $api-subject = sprintf(DIRECT-GET, $!name);
+        my %payload = :last_by_seq($seq);
         $!nats.request: $api-subject, to-json %payload
     }
 
