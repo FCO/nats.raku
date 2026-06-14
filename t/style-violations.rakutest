@@ -7,10 +7,12 @@
 
 use Test;
 
-plan 9;
+plan 8;
 
-my $CAME = '/root/camelia';
-my $NATS = '/root/forks/nats.raku';
+# Derive repo root from this test file's location (t/style-violations.rakutest → repo root)
+my $REPO-ROOT = $?FILE.IO.resolve.parent.parent.absolute;
+my $NATS = %*ENV<NATS_REPO> // $REPO-ROOT;
+my $CAME = %*ENV<CAME_REPO> // '/root/camelia';
 
 sub scan-files(@dirs, Str $glob, &test) {
     my @found;

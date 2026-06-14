@@ -6,10 +6,10 @@
 use Test;
 use Test::Mock;
 
-use lib '/root/forks/nats.raku/lib';
+use lib 'lib';
 use Nats;
 
-plan 3;
+plan 4;
 
 # ── Test 1: :timeout completes when no response arrives ──
 {
@@ -36,31 +36,18 @@ plan 3;
     my $nats = Nats.new: :socket-class($sc);
     await $nats.start;
 
-    # Use subscribe+reply pattern (manual request-reply) to verify
-    # message routing works with the supply{whenever} wrapper
-    my $inbox = "_INBOX.rqtest";
+    # Use explicit :reply-to so we can simulate the response
+    my $inbox = "_INBOX.rqtest2";
     my $sub = $nats.subscribe: $inbox, :max-messages(1);
+    my $supply = $nats.request('target.subject', 'hello',
+        :timeout(5), :reply-to($inbox));
 
-    # request() with timeout=5 sends PUB with reply-to=$inbox
-    my $supply = $nats.request('target.subject', 'hello', :timeout(5));
+    # Simulate response arriving on the subscribed inbox
+    $supplier.emit: "MSG $inbox {$sub.sid} 5\r\nworld\r\n";
+    my $result = await $supply.Promise;
 
-    # Find the SID used by request()'s internal subscription
-    # The request uses a generated inbox, not ours. We need to
-    # capture what SID the request() subscribe uses.
-    # Approach: use the global supply to intercept
-    my $msg-captured = False;
-    $nats.supply.tap: -> $m {
-        if $m.subject eq "target.subject" {
-            note "Captured: {$m.payload}"; 
-            $msg-captured = True;
-        }
-    };
-
-    # request() creates its OWN subscription for the reply, not ours.
-    # To test: we just verify the timeout path works. The response
-    # path through supply{whenever} is tested implicitly by the
-    # fact that non-timeout request() works (existing tests).
-    pass ':timeout(5) request does not crash, supply created';
+    ok $result.defined, ':timeout with response returns the message';
+    isa-ok $result, Nats::Message, 'Response is a Nats::Message';
 }
 
 # ── Test 3: Backward compatible — without :timeout still works ──

@@ -41,7 +41,7 @@ plan 4;
 
 # Test 4: head(1) from NATS-like flow  
 {
-    use lib '/root/forks/nats.raku/lib';
+    use lib 'lib';
     use Test::Mock;
     use Nats;
     use Nats::Message;

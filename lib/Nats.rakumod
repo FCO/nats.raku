@@ -142,16 +142,22 @@ method !gen-inbox {
      without $timeout {
          return $head-supply;
      }
-     # Race response against timeout — unsubscribe on timeout so
-     # the head supply completes naturally (with no message).
+     # Race response against timeout — let head supply drive completion
+     # for multi-message support. Timeout unsubscribes so the head supply
+     # completes naturally with whatever messages arrived.
      supply {
+         my $timeout-fired = False;
          whenever $head-supply -> $msg {
              emit $msg;
-             done;
+             LAST {
+                 done unless $timeout-fired;
+                 $timeout-fired = True;
+             }
          }
          whenever Promise.in($timeout) {
              $sub.unsubscribe;
-             done;
+             done unless $timeout-fired;
+             $timeout-fired = True;
          }
      }
  }
