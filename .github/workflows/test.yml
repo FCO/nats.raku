@@ -3,8 +3,15 @@ on: [ push, pull_request ]
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      nats:
+        image: nats:latest
+        ports:
+          - 4222:4222
     steps:
       - name: Test + coverage
+        uses: JJ/raku-test-action@v2
         with:
           coverage: true
-        uses: JJ/raku-test-action@v2
+        env:
+          NATS_URL: nats://localhost:4222
