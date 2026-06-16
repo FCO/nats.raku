@@ -1,7 +1,7 @@
 {
   "auth": "zef:FCO",
   "authors": [
-    "Fernando Corrêa de Oliveira"
+    "Fernando Corr\u00eaa de Oliveira"
   ],
   "build-depends": [
     "Test::Mock",
@@ -11,7 +11,7 @@
     "JSON::Fast",
     "URL"
   ],
-  "description": "NATS client for Raku with JetStream support",
+  "description": "NATS client for Raku with JetStream and KV support",
   "license": "Artistic-2.0",
   "name": "Nats",
   "perl": "6.d",
@@ -27,17 +27,17 @@
     "Nats::Message": "lib/Nats/Message.rakumod",
     "Nats::Replyable": "lib/Nats/Replyable.rakumod",
     "Nats::Subscription": "lib/Nats/Subscription.rakumod",
-    "Nats::Subscriptions": "lib/Nats/Subscriptions.rakumod"
+    "Nats::Subscriptions": "lib/Nats/Subscriptions.rakumod",
+    "Nats::KV": "lib/Nats/KV.rakumod"
   },
-  "resources": [
-  ],
+  "resources": [],
   "source-url": "https://github.com/FCO/nats.raku.git",
   "tags": [
     "nats",
     "jetstream",
-    "messaging"
+    "messaging",
+    "kv"
   ],
-  "test-depends": [
-  ],
+  "test-depends": [],
   "version": "0.1.0"
 }

@@ -8,6 +8,7 @@ use Nats::Data;
 use Nats::Message;
 use Nats::Subscription;
 use Nats::JetStream;
+use Nats::KV;
 
 has $.socket-class       = IO::Socket::Async;
 has %!subs;
@@ -236,6 +237,10 @@ method stream($name, *@subjects, |c) {
     Nats::Stream.new: :nats(self), :$name, |(:@subjects if @subjects), |c
 }
 
+method kv(Str $bucket, |c) {
+    Nats::KV.new: :nats(self), :$bucket, |c
+}
+
 method !in(|c) {
     self!debug(">>", |c)
 }
@@ -383,6 +388,14 @@ my $stream = $nats.stream: 'mystream', :subjects['foo.>'];
 
 Creates a C<Nats::Stream> object for JetStream operations.
 
+=head2 kv
+
+=begin code :lang<raku>
+my $kv = $nats.kv: 'mybucket';
+=end code
+
+Creates a C<Nats::KV> object for JetStream Key-Value operations.
+
 =head1 JetStream
 
 See C<Nats::JetStream> for stream and consumer management.
@@ -398,6 +411,30 @@ await $consumer.create-named;
 react whenever $consumer.msgs(:batch, :no-wait) {
     say .payload;
     .?ack;
+}
+=end code
+
+=head1 Key-Value Store (JetStream KV)
+
+See C<Nats::KV> for key-value operations built on JetStream.
+
+=begin code :lang<raku>
+use Nats::KV;
+
+my $kv = $nats.kv: 'mybucket';
+await $kv.create;
+
+$kv.put: 'foo', 'bar';
+say $kv.get: 'foo';          # bar
+
+$kv.delete: 'foo';
+
+# List all keys
+.say for $kv.keys;
+
+# Watch for changes
+react whenever $kv.watch.supply -> $msg {
+    say \"Key changed: { $msg.subject }\";
 }
 =end code
 
