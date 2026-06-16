@@ -1,0 +1,86 @@
+use Test;
+use Nats;
+use Nats::KV;
+
+plan 9;
+
+my $nats = Nats.new: :servers[%*ENV<NATS_URL> // 'nats://localhost:4222'];
+await $nats.start;
+$nats.connect;
+
+my $bucket = 'test-kv-' ~ (^10000).pick;
+
+subtest 'create bucket', {
+    my $kv = $nats.kv($bucket);
+    my $resp = $kv.create;
+    my $msg = await $resp.Promise;
+    ok $msg, 'bucket created';
+    ok $msg.payload, 'response has payload';
+}
+
+subtest 'put and get', {
+    my $kv = $nats.kv($bucket);
+    $kv.put('hello', 'world');
+    sleep 0.1;  # give NATS time to process
+    my $val = $kv.get('hello');
+    is $val, 'world', 'get returns put value';
+}
+
+subtest 'get missing key', {
+    my $kv = $nats.kv($bucket);
+    my $val = $kv.get('nonexistent');
+    ok !$val.defined, 'get missing key returns Nil';
+}
+
+subtest 'overwrite value', {
+    my $kv = $nats.kv($bucket);
+    $kv.put('counter', '1');
+    $kv.put('counter', '2');
+    sleep 0.1;
+    is $kv.get('counter'), '2', 'last write wins';
+}
+
+subtest 'delete key', {
+    my $kv = $nats.kv($bucket);
+    $kv.put('temp', 'data');
+    sleep 0.1;
+    $kv.delete('temp');
+    sleep 0.1;
+    my $val = $kv.get('temp');
+    ok !$val.defined || $val eq '', 'delete removes value';
+}
+
+subtest 'list keys', {
+    my $kv = $nats.kv($bucket);
+    $kv.put('alpha', '1');
+    $kv.put('beta',  '2');
+    $kv.put('gamma', '3');
+    sleep 0.2;
+    my @keys = $kv.keys;
+    ok @keys.elems >= 3, "has at least 3 keys (got {@keys.elems})";
+    ok @keys.grep('alpha'), 'contains alpha';
+    ok @keys.grep('beta'),  'contains beta';
+}
+
+subtest 'watch changes', {
+    my $kv = $nats.kv($bucket);
+    my $sub = $kv.watch;
+    my $p = $sub.supply.head.Promise;
+    $kv.put('watched', 'changed');
+    await Promise.anyof: $p, Promise.in(2);
+    ok $p.so, 'watch received change';
+    $nats.unsubscribe: $sub.sid;
+}
+
+subtest 'kv via Nats.kv method', {
+    my $kv = $nats.kv($bucket);
+    ok $kv ~~ Nats::KV, 'Nats.kv returns Nats::KV';
+}
+
+subtest 'destroy bucket', {
+    my $kv = $nats.kv($bucket);
+    my $resp = $kv.destroy;
+    ok $resp, 'bucket destroyed';
+}
+
+done-testing;
